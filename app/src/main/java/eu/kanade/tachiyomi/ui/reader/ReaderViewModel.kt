@@ -112,7 +112,9 @@ import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import java.time.Instant
+import java.util.Collections.emptyList
 import java.util.Date
+import java.util.LinkedHashMap
 
 /**
  * Presenter used by the activity to perform background operations.
@@ -149,6 +151,7 @@ class ReaderViewModel @JvmOverloads constructor(
     // Chimahon: OCR and dictionary
     private val ocrCacheManager: chimahon.ocr.OcrCacheManager = Injekt.get(),
     private val dictionaryPreferences: DictionaryPreferences = Injekt.get(),
+    private val ocrManager: eu.kanade.tachiyomi.data.ocr.OcrManager = uy.kohesive.injekt.Injekt.get(),
 ) : ViewModel() {
 
     private data class OcrCacheKey(
@@ -202,6 +205,8 @@ class ReaderViewModel @JvmOverloads constructor(
             ChapterDownloadAction.START_NOW -> downloadManager.startDownloadNow(chapter.id)
             ChapterDownloadAction.CANCEL -> cancelDownload(chapter.id)
             ChapterDownloadAction.DELETE -> deleteChapter(chapter)
+            ChapterDownloadAction.OCR -> runOcrForChapter(chapter)
+            ChapterDownloadAction.DELETE_OCR -> deleteOcrForChapter(chapter)
         }
     }
 
@@ -1188,6 +1193,20 @@ class ReaderViewModel @JvmOverloads constructor(
         val enabled = !pref.get()
         pref.set(enabled)
         return enabled
+    }
+
+    fun runOcrForChapter(chapter: Chapter) {
+        val manga = this.manga ?: return
+        viewModelScope.launch {
+            downloadManager.downloadChaptersWithOcr(manga, listOf(chapter))
+        }
+    }
+
+    fun deleteOcrForChapter(chapter: Chapter) {
+        val manga = this.manga ?: return
+        viewModelScope.launchIO {
+            ocrManager.deleteOcrForChapter(manga, chapter)
+        }
     }
 
     fun showLoadingDialog() {

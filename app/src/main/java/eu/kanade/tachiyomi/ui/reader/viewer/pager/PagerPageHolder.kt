@@ -35,7 +35,6 @@ import tachiyomi.core.common.util.system.logcat
 import tachiyomi.decoder.ImageDecoder
 import tachiyomi.i18n.MR
 import kotlin.math.max
-import chimahon.DictionaryRepository
 
 /**
  * View of the ViewPager that contains a page of a chapter.

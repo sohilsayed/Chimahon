@@ -286,32 +286,31 @@ object DownloadQueueScreen : Screen() {
                         screenModel.adapter?.isHandleDragEnabled = true
                         screenModel.controllerBinding.root.layoutManager = LinearLayoutManager(context)
 
-                            ViewCompat.setNestedScrollingEnabled(screenModel.controllerBinding.root, true)
+                        ViewCompat.setNestedScrollingEnabled(screenModel.controllerBinding.root, true)
 
-                            scope.launchUI {
-                                screenModel.getDownloadStatusFlow()
-                                    .collect(screenModel::onStatusChange)
-                            }
-                            scope.launchUI {
-                                screenModel.getDownloadProgressFlow()
-                                    .collect(screenModel::onUpdateDownloadedPages)
-                            }
+                        scope.launchUI {
+                            screenModel.getDownloadStatusFlow()
+                                .collect(screenModel::onStatusChange)
+                        }
+                        scope.launchUI {
+                            screenModel.getDownloadProgressFlow()
+                                .collect(screenModel::onUpdateDownloadedPages)
+                        }
 
-                            screenModel.controllerBinding.root
-                        },
-                        update = {
-                            screenModel.controllerBinding.root
-                                .updatePadding(
-                                    left = left,
-                                    top = top,
-                                    right = right,
-                                    bottom = bottom,
-                                )
+                        screenModel.controllerBinding.root
+                    },
+                    update = {
+                        screenModel.controllerBinding.root
+                            .updatePadding(
+                                left = left,
+                                top = top,
+                                right = right,
+                                bottom = bottom,
+                            )
 
-                            screenModel.adapter?.updateDataSet(downloadList)
-                        },
-                    )
-                }
+                        screenModel.adapter?.updateDataSet(downloadList)
+                    },
+                )
 
                 if (ocrQueue.isNotEmpty()) {
                     OcrQueueSection(

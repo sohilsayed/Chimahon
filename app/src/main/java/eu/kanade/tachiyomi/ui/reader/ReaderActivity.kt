@@ -548,7 +548,7 @@ class ReaderActivity : BaseActivity() {
         }
 
         // Set up OCR popup callback on the pager viewer
-        (state.viewer as? PagerViewer)?.let { pager ->
+        (viewModel.state.value.viewer as? PagerViewer)?.let { pager ->
             if (pager.onShowOcrPopup == null) {
                 pager.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY ->
                     runOnUiThread {

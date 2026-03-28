@@ -131,7 +131,6 @@ object SettingsReaderScreen : SearchableSettings {
             // Chimahon: OCR settings
             getOcrGroup(readerPreferences = readerPref, ocrManager = ocrManager),
         )
-        )
     }
 
     @Composable
