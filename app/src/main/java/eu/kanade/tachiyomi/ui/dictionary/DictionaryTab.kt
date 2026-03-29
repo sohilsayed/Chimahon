@@ -37,7 +37,7 @@ import chimahon.LookupResult
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiResult
-import chimahon.anki.DelegatingWebViewBridge
+
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.main.MainActivity
@@ -137,35 +137,36 @@ data object DictionaryTab : Tab {
         val ankiTags by dictionaryPreferences.ankiDefaultTags().collectAsState()
         val showFrequencyHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
 
-        val delegatingBridge = remember(ankiEnabled) {
-            if (ankiEnabled) DelegatingWebViewBridge { results } else null
-        }
-
-        // Update callback on every recomposition so it captures latest results + prefs
-        if (ankiEnabled && delegatingBridge != null) {
-            delegatingBridge.onAddToAnki = { result ->
-                scope.launch {
-                    val ankiResult = AnkiCardCreator.addToAnki(
-                        context = context,
-                        result = result,
-                        deck = ankiDeck,
-                        model = ankiModel,
-                        fieldMapJson = ankiFieldMap,
-                        tags = ankiTags,
-                        dupCheck = ankiDupCheck,
-                        dupScope = ankiDupScope,
-                        dupAction = ankiDupAction,
-                    )
-                    when (ankiResult) {
-                        is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
-                        is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
-                        is AnkiResult.Error -> context.toast(
-                            context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+        // Simple callback for Anki lookup - index maps to results array
+        val onAnkiLookup: ((Int) -> Unit)? = if (ankiEnabled) {
+            { index ->
+                val result = results.getOrNull(index)
+                if (result != null) {
+                    scope.launch {
+                        val ankiResult = AnkiCardCreator.addToAnki(
+                            context = context,
+                            result = result,
+                            deck = ankiDeck,
+                            model = ankiModel,
+                            fieldMapJson = ankiFieldMap,
+                            tags = ankiTags,
+                            dupCheck = ankiDupCheck,
+                            dupScope = ankiDupScope,
+                            dupAction = ankiDupAction,
                         )
-                        is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                        when (ankiResult) {
+                            is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
+                            is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
+                            is AnkiResult.Error -> context.toast(
+                                context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+                            )
+                            is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                        }
                     }
                 }
             }
+        } else {
+            null
         }
 
         LaunchedEffect(tabNavigator.current) {
@@ -276,25 +277,25 @@ data object DictionaryTab : Tab {
             if (shouldMountWebView) {
                 // Create the WebView only when the user starts searching, so the search bar
                 // renders immediately when opening the tab.
-                DictionaryEntryWebView(
-                    results = results,
-                    styles = styles,
-                    mediaDataUris = mediaDataUris,
-                    placeholder = if (hasSearched) {
-                        stringResource(MR.strings.no_results_found)
-                    } else {
-                        "Search to view dictionary entries"
-                    },
-                    showFrequencyHarmonic = showFrequencyHarmonic,
-                    existingExpressions = existingExpressions,
-                    webViewProvider = { context ->
-                        retainedWebView ?: WebView(context).also { retainedWebView = it }
-                    },
-                    ankiBridge = delegatingBridge,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                )
+                    DictionaryEntryWebView(
+                        results = results,
+                        styles = styles,
+                        mediaDataUris = mediaDataUris,
+                        placeholder = if (hasSearched) {
+                            stringResource(MR.strings.no_results_found)
+                        } else {
+                            "Search to view dictionary entries"
+                        },
+                        showFrequencyHarmonic = showFrequencyHarmonic,
+                        existingExpressions = existingExpressions,
+                        webViewProvider = { context ->
+                            retainedWebView ?: WebView(context).also { retainedWebView = it }
+                        },
+                        onAnkiLookup = onAnkiLookup,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                    )
             } else {
                 Column(
                     modifier = Modifier

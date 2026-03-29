@@ -184,6 +184,24 @@ object AnkiCardCreator {
         return AnkiResult.Success
     }
 
+    suspend fun checkExistingCards(context: Context, expressions: List<String>, modelName: String): Set<String> {
+        val existing = mutableSetOf<String>()
+        if (modelName.isBlank()) return existing
+
+        val bridge = AnkiDroidBridge(context)
+        for (expr in expressions.distinct()) {
+            try {
+                val notes = bridge.findNotes(expr, modelName)
+                if (notes.isNotEmpty()) {
+                    existing.add(expr)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "checkExistingCards failed for expr=$expr", e)
+            }
+        }
+        return existing
+    }
+
     fun parseFieldMap(json: String): Map<String, String> {
         if (json.isBlank() || json == "{}") return emptyMap()
         return try {

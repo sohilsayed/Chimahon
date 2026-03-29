@@ -26,9 +26,7 @@ import androidx.compose.ui.unit.dp
 import chimahon.DictionaryRepository
 import chimahon.LookupResult
 import chimahon.anki.AnkiCardCreator
-import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiResult
-import chimahon.anki.DelegatingWebViewBridge
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryEntryWebView
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
@@ -92,36 +90,38 @@ fun OcrLookupPopup(
     val paddingPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
 
-    val delegatingBridge = remember(ankiEnabled) {
-        if (ankiEnabled) DelegatingWebViewBridge { results } else null
-    }
-
-    if (ankiEnabled && delegatingBridge != null) {
-        delegatingBridge.onAddToAnki = { result ->
-            scope.launch {
-                val ankiResult = AnkiCardCreator.addToAnki(
-                    context = context,
-                    result = result,
-                    deck = ankiDeck,
-                    model = ankiModel,
-                    fieldMapJson = ankiFieldMap,
-                    tags = ankiTags,
-                    dupCheck = ankiDupCheck,
-                    dupScope = ankiDupScope,
-                    dupAction = ankiDupAction,
-                    sentence = fullText,
-                    offset = charOffset,
-                )
-                when (ankiResult) {
-                    is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
-                    is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
-                    is AnkiResult.Error -> context.toast(
-                        context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+    // Simple callback for Anki lookup - index maps to results array
+    val onAnkiLookup: ((Int) -> Unit)? = if (ankiEnabled) {
+        { index ->
+            val result = results.getOrNull(index)
+            if (result != null) {
+                scope.launch {
+                    val ankiResult = AnkiCardCreator.addToAnki(
+                        context = context,
+                        result = result,
+                        deck = ankiDeck,
+                        model = ankiModel,
+                        fieldMapJson = ankiFieldMap,
+                        tags = ankiTags,
+                        dupCheck = ankiDupCheck,
+                        dupScope = ankiDupScope,
+                        dupAction = ankiDupAction,
+                        sentence = fullText,
+                        offset = charOffset,
                     )
-                    is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                    when (ankiResult) {
+                        is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
+                        is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
+                        is AnkiResult.Error -> context.toast(
+                            context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+                        )
+                        is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                    }
                 }
             }
         }
+    } else {
+        null
     }
 
     // === Positioning Logic: Right → Left → Below → Above ===
@@ -159,6 +159,11 @@ fun OcrLookupPopup(
         }
     }
 
+    // Reset state when popup opens
+    LaunchedEffect(Unit) {
+        existingExpressions = emptySet()
+    }
+
     LaunchedEffect(lookupString) {
         if (lookupString.isBlank()) {
             isLoading = false
@@ -181,20 +186,8 @@ fun OcrLookupPopup(
 
                 // Check which expressions are already in Anki
                 if (ankiEnabled && ankiModel.isNotBlank() && results.isNotEmpty()) {
-                    val bridge = AnkiDroidBridge(context)
-                    val foundExpressions = mutableSetOf<String>()
                     val uniqueExpressions = results.map { it.term.expression }.distinct()
-                    for (expr in uniqueExpressions) {
-                        try {
-                            val notes = bridge.findNotes(expr, ankiModel)
-                            if (notes.isNotEmpty()) {
-                                foundExpressions.add(expr)
-                            }
-                        } catch (_: Exception) {
-                            // Ignore errors
-                        }
-                    }
-                    existingExpressions = foundExpressions
+                    existingExpressions = AnkiCardCreator.checkExistingCards(context, uniqueExpressions, ankiModel)
                 }
             } catch (e: Exception) {
                 errorMessage = e.message ?: "Lookup failed"
@@ -235,7 +228,7 @@ fun OcrLookupPopup(
                         popupScale = popupScalePref,
                         existingExpressions = existingExpressions,
                         webViewProvider = { webView },
-                        ankiBridge = delegatingBridge,
+                        onAnkiLookup = onAnkiLookup,
                         modifier = Modifier
                             .width(maxWidthDp)
                             .heightIn(min = 60.dp, max = maxHeightDp),

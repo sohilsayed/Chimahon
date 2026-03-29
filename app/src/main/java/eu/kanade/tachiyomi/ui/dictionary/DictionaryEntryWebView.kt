@@ -2,6 +2,7 @@ package eu.kanade.tachiyomi.ui.dictionary
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import android.util.JsonWriter
@@ -19,9 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import chimahon.DictionaryStyle
 import chimahon.LookupResult
-import chimahon.anki.DelegatingWebViewBridge
 import java.io.StringWriter
 import java.nio.charset.StandardCharsets
+
+private const val ANKI_SCHEME = "anki"
+private const val ANKI_PATH_ADD = "add"
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -36,7 +39,7 @@ fun DictionaryEntryWebView(
     existingExpressions: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
-    ankiBridge: DelegatingWebViewBridge? = null,
+    onAnkiLookup: ((Int) -> Unit)? = null,
 ) {
     val isDark = isSystemInDarkTheme()
 
@@ -70,22 +73,42 @@ fun DictionaryEntryWebView(
 
                     disableSafeBrowsingForDictionary(this)
 
-                    // Add bridge from state so flush() can access it
+                    // Payload bridge for efficient data transfer
                     addJavascriptInterface(state.bridge, "PayloadBridge")
-
-                    // Add Anki bridge for card creation
-                    ankiBridge?.let { addJavascriptInterface(it, "AnkiBridge") }
 
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
                             request: WebResourceRequest?,
-                        ): Boolean = true
+                        ): Boolean {
+                            val url = request?.url ?: return false
+                            // Intercept anki://add?index=0 URLs
+                            if (url.scheme == ANKI_SCHEME && url.host == ANKI_PATH_ADD) {
+                                val index = url.getQueryParameter("index")?.toIntOrNull()
+                                val s = view?.tag as? DictionaryWebViewState
+                                if (index != null && index >= 0) {
+                                    s?.onAnkiLookup?.invoke(index)
+                                }
+                                return true // Consumed
+                            }
+                            return false
+                        }
 
                         override fun onPageFinished(view: WebView?, url: String?) {
                             super.onPageFinished(view, url)
                             val s = view?.tag as? DictionaryWebViewState ?: return
                             s.pageReady = true
+                            // Inject Anki bridge function
+                            view.evaluateJavascript(
+                                """
+                                window.AnkiBridge = {
+                                    addToAnki: function(index) {
+                                        window.location.href = "anki://add?index=" + index;
+                                    }
+                                };
+                                """.trimIndent(),
+                                null,
+                            )
                             s.flush(view)
                         }
                     }
@@ -106,6 +129,9 @@ fun DictionaryEntryWebView(
         },
         update = { webView: WebView ->
             val state = webView.tag as? DictionaryWebViewState ?: return@AndroidView
+
+            // Update callback to latest (WebViewClient reads from state at runtime)
+            state.onAnkiLookup = onAnkiLookup
 
             state.pendingPayload = payload
 
@@ -157,6 +183,7 @@ private class DictionaryWebViewState(
     val bridge: PayloadBridge = PayloadBridge(),
 ) {
     var pageReady: Boolean = false
+    var onAnkiLookup: ((Int) -> Unit)? = null
     var lastPayload: String? = null
     var pendingPayload: String? = null
 
