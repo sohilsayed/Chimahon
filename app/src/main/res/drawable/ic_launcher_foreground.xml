@@ -7,7 +7,8 @@
         android:pivotX="500"
         android:pivotY="500"
         android:scaleX="0.55"
-        android:scaleY="0.55">
+        android:scaleY="0.55"
+        android:translateY="20">
         <path
             android:fillColor="#F2E4DA"
         android:pathData="M739.5,468.003C793.9,614.803 633.833,674.836 547,686.503C501.167,693.669 343.5,701.502 315,596.002C284.426,482.826 354.5,402 429.5,364.502C510.5,329.502 685.1,321.203 739.5,468.003Z" />

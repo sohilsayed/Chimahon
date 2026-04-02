@@ -599,7 +599,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     /**
      * Handle tap on OCR block: first tap activates, second tap triggers lookup.
      *
-     * Called by [OcrSubsamplingImageView.OcrGestureListener.onSingleTapConfirmed].
+    * Called by [OcrSubsamplingImageView.OcrGestureListener.onSingleTapUp].
      */
     internal fun handleOcrTap(
         block: OcrTextBlock,

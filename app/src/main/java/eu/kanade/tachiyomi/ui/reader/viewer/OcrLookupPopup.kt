@@ -1,9 +1,14 @@
 package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.webkit.WebView
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -17,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.window.Popup
@@ -30,6 +36,7 @@ import eu.kanade.tachiyomi.ui.dictionary.DictionaryEntryWebView
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
 import eu.kanade.tachiyomi.util.system.toast
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -158,80 +165,107 @@ fun OcrLookupPopup(
         }
     }
 
-    // Reset state when popup opens
-    LaunchedEffect(Unit) {
-        existingExpressions = emptySet()
-    }
-
-    LaunchedEffect(lookupString) {
+    LaunchedEffect(lookupString, ankiEnabled, ankiModel) {
         if (lookupString.isBlank()) {
+            results = emptyList()
+            styles = emptyList()
+            mediaDataUris = emptyMap()
+            existingExpressions = emptySet()
             isLoading = false
             return@LaunchedEffect
         }
 
         isLoading = true
         errorMessage = null
+        results = emptyList()
+        styles = emptyList()
+        mediaDataUris = emptyMap()
+        existingExpressions = emptySet()
 
-        scope.launch {
-            try {
-                val termPaths = getDictionaryPaths(context)
-                val result = withContext(Dispatchers.IO) {
-                    repository.lookup(lookupString, termPaths)
-                }
-                results = result.results
-                styles = result.styles
-                mediaDataUris = result.mediaDataUris
-                errorMessage = result.error
-
-                // Check which expressions are already in Anki
-                if (ankiEnabled && ankiModel.isNotBlank() && results.isNotEmpty()) {
-                    val uniqueExpressions = results.map { it.term.expression }.distinct()
-                    existingExpressions = AnkiCardCreator.checkExistingCards(context, uniqueExpressions, ankiModel)
-                }
-            } catch (e: Exception) {
-                errorMessage = e.message ?: "Lookup failed"
-            } finally {
-                isLoading = false
+        try {
+            val termPaths = withContext(Dispatchers.IO) {
+                getDictionaryPaths(context)
             }
+
+            val result = withContext(Dispatchers.IO) {
+                repository.lookup(lookupString, termPaths)
+            }
+
+            results = result.results
+            styles = result.styles
+            mediaDataUris = result.mediaDataUris
+            errorMessage = result.error
+
+            // Run duplicate check off-main so popup open/render stays responsive.
+            if (ankiEnabled && ankiModel.isNotBlank() && results.isNotEmpty()) {
+                val uniqueExpressions = results.map { it.term.expression }.distinct()
+                existingExpressions = withContext(Dispatchers.IO) {
+                    AnkiCardCreator.checkExistingCards(context, uniqueExpressions, ankiModel)
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "Lookup failed"
+        } finally {
+            isLoading = false
         }
     }
+
+    val outsideTapInteraction = remember { MutableInteractionSource() }
 
     Popup(
         alignment = Alignment.TopStart,
         onDismissRequest = { onDismiss() },
         properties = PopupProperties(
             focusable = true,
-            dismissOnClickOutside = true,
+            dismissOnClickOutside = false,
         ),
     ) {
-        Surface(
-            modifier = modifier
-                .offset { IntOffset(position.x.roundToInt(), position.y.roundToInt()) }
-                .width(maxWidthDp)
-                .heightIn(max = maxHeightDp),
-            shape = MaterialTheme.shapes.medium,
-            tonalElevation = 6.dp,
-            shadowElevation = 6.dp,
-        ) {
-            when {
-                isLoading -> {}
-                errorMessage != null -> {}
-                results.isEmpty() -> {}
-                else -> {
-                    DictionaryEntryWebView(
-                        results = results,
-                        styles = styles,
-                        mediaDataUris = mediaDataUris,
-                        placeholder = "",
-                        headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
-                        popupScale = popupScalePref,
-                        existingExpressions = existingExpressions,
-                        webViewProvider = { webView },
-                        onAnkiLookup = onAnkiLookup,
-                        modifier = Modifier
-                            .width(maxWidthDp)
-                            .heightIn(min = 60.dp, max = maxHeightDp),
-                    )
+        Box(modifier = modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        indication = null,
+                        interactionSource = outsideTapInteraction,
+                    ) { onDismiss() },
+                color = Color.Transparent,
+            ) {
+            }
+
+            Surface(
+                modifier = Modifier
+                    .offset { IntOffset(position.x.roundToInt(), position.y.roundToInt()) }
+                    .width(maxWidthDp)
+                    .height(maxHeightDp),
+                shape = MaterialTheme.shapes.medium,
+                tonalElevation = 6.dp,
+                shadowElevation = 6.dp,
+            ) {
+                when {
+                    isLoading -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                    errorMessage != null -> {}
+                    results.isEmpty() -> {}
+                    else -> {
+                        DictionaryEntryWebView(
+                            results = results,
+                            styles = styles,
+                            mediaDataUris = mediaDataUris,
+                            placeholder = "",
+                            headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
+                            popupScale = popupScalePref,
+                            existingExpressions = existingExpressions,
+                            webViewProvider = { webView },
+                            onAnkiLookup = onAnkiLookup,
+                            modifier = Modifier
+                                .fillMaxSize(),
+                        )
+                    }
                 }
             }
         }

@@ -486,6 +486,12 @@ object SettingsDictionaryScreen : SearchableSettings {
         val fieldMapPref = remember { dictionaryPreferences.ankiFieldMap() }
         val fieldMapJson by fieldMapPref.collectAsState()
 
+        LaunchedEffect(fieldMapJson) {
+            if (fieldMapJson.isBlank()) {
+                fieldMapPref.set("{}")
+            }
+        }
+
         val dupCheckPref = remember { dictionaryPreferences.ankiDuplicateCheck() }
         val dupCheck by dupCheckPref.collectAsState()
 
@@ -521,14 +527,16 @@ object SettingsDictionaryScreen : SearchableSettings {
             val normalizedName = fieldName.trim()
             if (normalizedName.isNotBlank()) {
                 val updated = fieldMap.toMutableMap()
-                if (newDisplayValue.isBlank()) {
+                val normalizedDisplayValue = newDisplayValue.trim()
+                val effectiveDisplayValue = if (normalizedDisplayValue == "{}") "" else newDisplayValue
+                if (effectiveDisplayValue.isBlank()) {
                     if (keepEmpty) {
                         updated[normalizedName] = ""
                     } else {
                         updated.remove(normalizedName)
                     }
                 } else {
-                    updated[normalizedName] = convertToStorageFormat(newDisplayValue)
+                    updated[normalizedName] = convertToStorageFormat(effectiveDisplayValue)
                 }
                 fieldMapPref.set(org.json.JSONObject(updated).toString())
             }
@@ -675,6 +683,9 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 value = selectedModel,
                                 options = models,
                                 onValueChange = {
+                                    if (it == selectedModel) {
+                                        return@AnkiDropdownPreference
+                                    }
                                     modelPref.set(it)
                                     fieldMapPref.set("{}")
                                 },
@@ -715,7 +726,9 @@ object SettingsDictionaryScreen : SearchableSettings {
 
                                 modelFields.forEach { fieldName ->
                                     val storageValue = fieldMap[fieldName] ?: ""
-                                    val displayValue = storageValue.replace("<br>", "")
+                                    val displayValue = storageValue
+                                        .replace("<br>", "")
+                                        .ifBlank { "{}" }
                                     AnkiFieldMappingRow(
                                         fieldName = fieldName,
                                         fieldValue = displayValue,
@@ -736,7 +749,9 @@ object SettingsDictionaryScreen : SearchableSettings {
 
                                 customFieldNames.forEach { fieldName ->
                                     val storageValue = fieldMap[fieldName] ?: ""
-                                    val displayValue = storageValue.replace("<br>", "")
+                                    val displayValue = storageValue
+                                        .replace("<br>", "")
+                                        .ifBlank { "{}" }
                                     AnkiFieldMappingRow(
                                         fieldName = fieldName,
                                         fieldValue = displayValue,
@@ -924,7 +939,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     onValueChange = { newValue ->
                         onValueChange(newValue)
                     },
-                    placeholder = { Text("", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text("{}", style = MaterialTheme.typography.bodySmall) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp),
@@ -987,7 +1002,7 @@ object SettingsDictionaryScreen : SearchableSettings {
     private fun parseMarkersForDisplay(fieldValue: String): List<String> {
         if (fieldValue.isBlank()) return emptyList()
         val normalized = fieldValue.replace("<br>", "")
-        val markerRegex = Regex("""\{(\w+)\}""")
+        val markerRegex = Regex("""\{([a-zA-Z0-9-]+)\}""")
         return markerRegex.findAll(normalized).map { it.groupValues[1] }.toList()
     }
 

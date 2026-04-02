@@ -25,7 +25,7 @@ import kotlin.math.abs
  * ## Architecture
  * - onDraw: renders OCR boxes and text (reads state from ocrHost)
  * - onTouchEvent: dispatches to GestureDetector for single tap detection on blocks
- * - gestureDetector: uses safe methods (onDown, onSingleTapConfirmed) per SSIV wiki §9
+ * - gestureDetector: uses safe methods (onDown, onSingleTapUp) per SSIV wiki §9
  * - All hit testing done in source pixel space (via viewToSourceCoord)
  *
  * ## Coordinate Spaces
@@ -588,7 +588,7 @@ class OcrSubsamplingImageView(
             return hitBlock != null
         }
 
-        override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+        override fun onSingleTapUp(e: MotionEvent): Boolean {
             val host = ocrHost ?: return false
             val block = getCachedHitBlock(e.x, e.y)
             if (block == null) {
