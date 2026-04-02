@@ -34,6 +34,12 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import chimahon.DictionaryStyle
 import chimahon.HoshiDicts
 import chimahon.LookupResult
+import chimahon.dictionary.TextType
+import chimahon.dictionary.TextTypeDetector
+import chimahon.dictionary.SimpleTextTypeDetector
+import chimahon.dictionary.arabic.ArabicTextPreprocessors
+import chimahon.dictionary.arabic.ArabicDeinflector
+import chimahon.dictionary.arabic.ArabicLookupMapper
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiResult
@@ -443,8 +449,8 @@ data object DictionaryTab : Tab {
                 HoshiDicts.rebuildQuery(
                     session = activeSession,
                     termPaths = termPaths.toTypedArray(),
-                    freqPaths = emptyArray(),
-                    pitchPaths = emptyArray(),
+                    freqPaths = termPaths.toTypedArray(),
+                    pitchPaths = termPaths.toTypedArray(),
                 )
                 cachedStyles = HoshiDicts.getStyles(activeSession).toList()
                 configuredTermPaths = termPaths
@@ -452,7 +458,7 @@ data object DictionaryTab : Tab {
             }
 
             val lookupStart = SystemClock.elapsedRealtime()
-            val results = HoshiDicts.lookup(activeSession, query, 50).toList()
+            val results = lookupByTextType(activeSession, query, 50)
             val lookupMs = SystemClock.elapsedRealtime() - lookupStart
 
             val mediaStart = SystemClock.elapsedRealtime()
@@ -496,6 +502,26 @@ data object DictionaryTab : Tab {
                 }
             }
             return count
+        }
+
+        private val textTypeDetector: TextTypeDetector = SimpleTextTypeDetector()
+
+        private fun lookupByTextType(session: Long, query: String, maxResults: Int): List<LookupResult> {
+            return when (textTypeDetector.detect(query)) {
+                TextType.ARABIC -> lookupArabic(session, query, maxResults)
+                TextType.JAPANESE -> HoshiDicts.lookup(session, query, maxResults).toList()
+            }
+        }
+
+        private fun lookupArabic(session: Long, query: String, maxResults: Int): List<LookupResult> {
+            val preprocessed = ArabicTextPreprocessors.process(query)
+            val deinflected = preprocessed.flatMap { ArabicDeinflector.deinflect(it) }
+            val candidates = deinflected.map { it.text }.distinct()
+
+            if (candidates.isEmpty()) return emptyList()
+
+            val terms = HoshiDicts.query(session, candidates, maxResults)
+            return ArabicLookupMapper.wrapAll(query, candidates, terms)
         }
 
         private fun buildMediaDataUris(activeSession: Long, results: List<LookupResult>): Map<String, String> {

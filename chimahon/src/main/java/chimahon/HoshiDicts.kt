@@ -75,6 +75,13 @@ object HoshiDicts {
     )
 
     external fun lookup(session: Long, text: String, maxResults: Int): Array<LookupResult>
+    external fun query(session: Long, text: String): Array<TermResult>
     external fun getStyles(session: Long): Array<DictionaryStyle>
     external fun getMediaFile(session: Long, dictName: String, mediaPath: String): ByteArray?
+
+    fun query(session: Long, texts: List<String>, maxResults: Int): List<TermResult> {
+        return texts.flatMap { query(session, it).toList() }
+            .distinctBy { it.expression to it.reading }
+            .take(maxResults)
+    }
 }

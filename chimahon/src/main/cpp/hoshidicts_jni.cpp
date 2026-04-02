@@ -310,6 +310,21 @@ Java_chimahon_HoshiDicts_lookup(JNIEnv *env, jobject, jlong session, jstring tex
 }
 
 extern "C" JNIEXPORT jobjectArray JNICALL
+Java_chimahon_HoshiDicts_query(JNIEnv *env, jobject, jlong session, jstring text) {
+    LookupObject *obj = as_object(session);
+    auto text_str = jstring_to_std_string(env, text);
+    auto results = obj->query.query(text_str);
+    jclass cls = env->FindClass("chimahon/TermResult");
+    jobjectArray array = env->NewObjectArray(static_cast<jsize>(results.size()), cls, nullptr);
+    for (size_t i = 0; i < results.size(); ++i) {
+        jobject item = new_term_result(env, results[i]);
+        env->SetObjectArrayElement(array, static_cast<jsize>(i), item);
+        env->DeleteLocalRef(item);
+    }
+    return array;
+}
+
+extern "C" JNIEXPORT jobjectArray JNICALL
 Java_chimahon_HoshiDicts_getStyles(JNIEnv *env, jobject, jlong session) {
     LookupObject *obj = as_object(session);
     auto styles = obj->query.get_styles();
