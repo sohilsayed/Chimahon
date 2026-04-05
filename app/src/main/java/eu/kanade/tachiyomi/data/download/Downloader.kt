@@ -94,6 +94,7 @@ class Downloader(
 ) {
 
     private val ocrManager: OcrManager by lazy { Injekt.get() }
+    private val mokuroSidecarCopier: MokuroSidecarCopier by lazy { Injekt.get() }
 
     /**
      * Store for persisting downloads across restarts.
@@ -455,6 +456,13 @@ class Downloader(
             cache.addChapter(chapterDirname, mangaDir, download.manga)
 
             DiskUtil.createNoMediaFile(tmpDir, context)
+
+            val finalChapterDir = if (downloadPreferences.saveChaptersAsCBZ().get()) {
+                mangaDir.findFile("$chapterDirname.cbz")
+            } else {
+                mangaDir.findFile(chapterDirname)
+            }
+            mokuroSidecarCopier.onDownloadComplete(download, finalChapterDir)
 
             val promotedQueuedOcr = ocrManager.markChapterReadyForOcr(download.manga, download.chapter)
             if (promotedQueuedOcr) {

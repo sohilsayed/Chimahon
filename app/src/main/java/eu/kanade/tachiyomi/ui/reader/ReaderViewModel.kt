@@ -84,6 +84,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import logcat.LogPriority
+import logcat.logcat
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.storage.UniFileTempFileManager
 import tachiyomi.core.common.util.lang.launchIO
@@ -113,6 +115,7 @@ import tachiyomi.domain.source.service.SourceManager
 import tachiyomi.source.local.isLocal
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.File
 import java.time.Instant
 import java.util.Collections.emptyList
 import java.util.Date
@@ -155,6 +158,8 @@ class ReaderViewModel @JvmOverloads constructor(
     private val dictionaryPreferences: DictionaryPreferences = Injekt.get(),
     private val ocrManager: eu.kanade.tachiyomi.data.ocr.OcrManager = uy.kohesive.injekt.Injekt.get(),
     private val localFileSystem: tachiyomi.source.local.io.LocalSourceFileSystem = Injekt.get(),
+    private val application: Application = Injekt.get(),
+    private val networkClient: okhttp3.OkHttpClient = Injekt.get<eu.kanade.tachiyomi.network.NetworkHelper>().client,
 ) : ViewModel() {
 
     private data class OcrCacheKey(
@@ -1727,6 +1732,111 @@ class ReaderViewModel @JvmOverloads constructor(
         logcat { "Mokuro: prewarmed OCR for pages $startPage-${endPage - 1} of chapter $chapterId" }
     }
 
+    private fun buildMokuroExtensionUrl(manga: Manga, chapter: Chapter, source: Source): String? {
+        if (source !is eu.kanade.tachiyomi.source.online.HttpSource) return null
+        if (!source.name.equals("Mokuro", ignoreCase = true)) return null
+
+        val parts = chapter.url.split("|", limit = 2)
+        if (parts.size != 2) return null
+        val (seriesPath, volumeName) = parts
+
+        return "https://mokuro.moe/mokuro-reader".toHttpUrl().newBuilder()
+            .addPathSegment(seriesPath)
+            .addPathSegment("$volumeName.mokuro")
+            .build()
+            .toString()
+    }
+
+    private suspend fun tryLoadMokuroFromUrl(
+        mokuroUrl: String,
+        manga: Manga,
+        chapter: Chapter,
+        source: Source,
+        pageIndex: Int,
+        totalPages: Int,
+    ): List<eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock>? {
+        return runCatching {
+            val request = okhttp3.Request.Builder()
+                .url(mokuroUrl)
+                .header("Referer", "https://mokuro.moe/catalog")
+                .build()
+
+            val content = networkClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    logcat(LogPriority.ERROR) { "Mokuro fetch failed: ${response.code}" }
+                    return@runCatching null
+                }
+                response.body?.string() ?: return@runCatching null
+            }
+
+            val mokuro = chimahon.ocr.parseMokuro(content)
+                ?: run {
+                    logcat(LogPriority.ERROR) { "Mokuro: failed to parse JSON" }
+                    return@runCatching null
+                }
+
+            val imageFiles = resolveChapterImageFiles(chapter, source)
+            val mokuroPage = if (imageFiles.isEmpty()) {
+                mokuro.pages.getOrNull(pageIndex)
+            } else {
+                chimahon.ocr.resolveMokuroPage(mokuro, imageFiles, pageIndex)
+            } ?: return@runCatching null
+
+            chimahon.ocr.convertMokuroBlocks(mokuroPage).map { block ->
+                eu.kanade.tachiyomi.ui.reader.viewer.OcrTextBlock(
+                    xmin = block.xmin,
+                    ymin = block.ymin,
+                    xmax = block.xmax,
+                    ymax = block.ymax,
+                    lines = block.lines,
+                    vertical = block.vertical,
+                    lineGeometries = block.lineGeometries?.map { lg ->
+                        eu.kanade.tachiyomi.ui.reader.viewer.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+                    },
+                )
+            }
+        }.getOrNull()
+    }
+
+    private fun resolveChapterImageFiles(chapter: Chapter, source: Source): List<chimahon.ocr.ImageFileInfo> {
+        if (source.isLocal() == false) return emptyList()
+
+        val parts = chapter.url.split('/', limit = 2)
+        if (parts.size != 2) return emptyList()
+        val (mangaDirName, chapterName) = parts
+
+        val mangaDir = localFileSystem.getBaseDirectory()
+            ?.findFile(mangaDirName)
+            ?: return emptyList()
+
+        val chapterFile = mangaDir.findFile(chapterName)
+            ?: return emptyList()
+
+        if (chapterFile.isDirectory) {
+            return chapterFile.listFiles()
+                ?.filter { it.isFile && isImageExtension(it.name) }
+                ?.sortedWith { f1, f2 ->
+                    f1.name.orEmpty().compareToCaseInsensitiveNaturalOrder(f2.name.orEmpty())
+                }
+                ?.map { f ->
+                    chimahon.ocr.ImageFileInfo(
+                        name = f.name.orEmpty(),
+                        relativePath = f.name.orEmpty(),
+                        basename = f.name?.substringBeforeLast('.') ?: "",
+                    )
+                }
+                .orEmpty()
+        }
+
+        return listOf(
+            chimahon.ocr.ImageFileInfo(
+                name = chapterName,
+                relativePath = chapterName,
+                basename = chapterName.substringBeforeLast('.'),
+            ),
+        )
+    }
+
     private suspend fun tryLoadMokuroBlocks(
         manga: Manga,
         chapter: Chapter,
@@ -1827,6 +1937,42 @@ class ReaderViewModel @JvmOverloads constructor(
                     }
                 }
 
+                return blocks
+            }
+        }
+
+        val mokuroUrl = buildMokuroExtensionUrl(manga, domainChapter, source)
+        if (mokuroUrl != null) {
+            tryLoadMokuroFromUrl(mokuroUrl, manga, domainChapter, source, page.index, page.chapter.pages?.size ?: 0)?.let { blocks ->
+                ocrCacheMutex.withLock {
+                    ocrCache[cacheKey] = blocks
+                    while (ocrCache.size > maxOcrCacheEntries) {
+                        val firstKey = ocrCache.keys.firstOrNull() ?: break
+                        ocrCache.remove(firstKey)
+                    }
+                }
+                ocrCacheManager.saveOcrBlocks(
+                    manga = manga,
+                    chapter = domainChapter,
+                    source = source,
+                    pageIndex = page.index,
+                    blocks = blocks.map {
+                        chimahon.ocr.OcrTextBlock(
+                            xmin = it.xmin,
+                            ymin = it.ymin,
+                            xmax = it.xmax,
+                            ymax = it.ymax,
+                            lines = it.lines,
+                            vertical = it.vertical,
+                            lineGeometries = it.lineGeometries?.map { lg ->
+                                chimahon.ocr.OcrLineGeometry(lg.xmin, lg.ymin, lg.xmax, lg.ymax, lg.rotation)
+                            },
+                        )
+                    },
+                    language = chimahon.ocr.OcrLanguage.JAPANESE.bcp47,
+                )
+                val elapsedMs = SystemClock.elapsedRealtime() - startMs
+                logcat { "OCR mokuro extension fetch: chapter=$chapterId page=${page.index} blocks=${blocks.size} time=${elapsedMs}ms" }
                 return blocks
             }
         }
