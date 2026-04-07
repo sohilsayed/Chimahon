@@ -130,6 +130,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
             repository: DictionaryRepository,
             screenX: Float,
             screenY: Float,
+            mediaInfo: chimahon.MediaInfo?,
+            screenshot: android.graphics.Bitmap?,
         ) -> Unit
     )? = null
 
