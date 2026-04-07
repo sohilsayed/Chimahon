@@ -1,6 +1,8 @@
 package eu.kanade.tachiyomi.ui.reader
 
 import android.app.Application
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.SystemClock
 import androidx.annotation.ColorInt
@@ -29,8 +31,8 @@ import eu.kanade.tachiyomi.data.saver.Image
 import eu.kanade.tachiyomi.data.saver.ImageSaver
 import eu.kanade.tachiyomi.data.saver.Location
 import eu.kanade.tachiyomi.data.sync.SyncDataJob
-import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.Source
+import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.source.online.MetadataSource
 import eu.kanade.tachiyomi.source.online.all.MergedSource
@@ -48,11 +50,12 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
 import eu.kanade.tachiyomi.util.chapter.filterDownloaded
 import eu.kanade.tachiyomi.util.chapter.removeDuplicates
 import eu.kanade.tachiyomi.util.editCover
-import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import eu.kanade.tachiyomi.util.lang.byteSize
+import eu.kanade.tachiyomi.util.lang.compareToCaseInsensitiveNaturalOrder
 import eu.kanade.tachiyomi.util.storage.DiskUtil
 import eu.kanade.tachiyomi.util.storage.DiskUtil.MAX_FILE_NAME_BYTES
 import eu.kanade.tachiyomi.util.storage.cacheImageDir
@@ -1259,6 +1262,38 @@ class ReaderViewModel @JvmOverloads constructor(
      * Saves the image of the selected page on the pictures directory and notifies the UI of the result.
      * There's also a notification to allow sharing the image somewhere else or deleting it.
      */
+    // KMK -->
+    // Get current page bitmap for crop/full screenshot (same pattern as saveImage)
+    fun getCurrentPageBitmap(): Bitmap? {
+        val viewer = state.value.viewer ?: return null
+
+        val readerPage = when (viewer) {
+            is PagerViewer -> viewer.currentPage as? ReaderPage
+            is WebtoonViewer -> viewer.currentPage as? ReaderPage
+            else -> null
+        }
+
+        if (readerPage == null || readerPage.status != Page.State.Ready) return null
+
+        return try {
+            val inputStream = readerPage.stream?.invoke()
+            if (inputStream != null) {
+                val bytes = inputStream.readBytes()
+                if (bytes.isNotEmpty()) {
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                } else {
+                    null
+                }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to decode page image" }
+            null
+        }
+    }
+    // KMK <--
+
     fun saveImage(useExtraPage: Boolean) {
         // SY -->
         val page = if (useExtraPage) {
@@ -2012,7 +2047,7 @@ class ReaderViewModel @JvmOverloads constructor(
                 val ymin = bbox.y.toFloat().coerceIn(0f, 1f)
                 val xmax = (bbox.x + bbox.width).toFloat().coerceIn(0f, 1f)
                 val ymax = (bbox.y + bbox.height).toFloat().coerceIn(0f, 1f)
-                
+
                 val lineGeometries = result.constituentBoxes?.map { lineBox ->
                     eu.kanade.tachiyomi.ui.reader.viewer.OcrLineGeometry(
                         xmin = lineBox.x.toFloat().coerceIn(0f, 1f),

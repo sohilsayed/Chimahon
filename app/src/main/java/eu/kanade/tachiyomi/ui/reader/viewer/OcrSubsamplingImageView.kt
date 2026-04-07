@@ -212,7 +212,7 @@ class OcrSubsamplingImageView(
         val sH = br.y - tl.y
 
         canvas.save()
-        
+
         // Rotate around center of the line box
         canvas.rotate(geo.rotation, tl.x + sW / 2f, tl.y + sH / 2f)
 
@@ -236,18 +236,18 @@ class OcrSubsamplingImageView(
 
     private fun drawHorizontalLineText(canvas: Canvas, text: String, tl: PointF, sW: Float, sH: Float) {
         val density = context.resources.displayMetrics.density
-        
+
         // Binary search for maximizing font size, similar to userscript's findBestFit
         var low = 8f * density
         var high = sH * 2.0f // Allow more headroom for short text in wide boxes
         var bestSize = low
-        
+
         // Approx 10 iterations for precision
         repeat(10) {
             val mid = (low + high) / 2f
             textPaint.textSize = mid
             val width = textPaint.measureText(text)
-            
+
             // Matching reference findBestFit: horizontal search is width-based only
             if (width <= sW * 1.05f) {
                 bestSize = mid
@@ -256,27 +256,26 @@ class OcrSubsamplingImageView(
                 high = mid - 0.1f
             }
         }
-        
+
         textPaint.textSize = bestSize
         textPaint.textAlign = Paint.Align.CENTER
-        
+
         val fm = textPaint.fontMetrics
         val baselineShift = -(fm.ascent + fm.descent) / 2f
-        
+
         // Centered drawing
         canvas.drawText(text, tl.x + sW / 2f, tl.y + sH / 2f + baselineShift, textPaint)
     }
 
-
     private fun drawColumnText(canvas: Canvas, text: String, tl: PointF, sW: Float, sH: Float) {
         val density = context.resources.displayMetrics.density
         val rowStep = sH / text.length.coerceAtLeast(1)
-        
+
         // Binary search for maximizing vertical font size
         var low = 8f * density
         var high = minOf(sW, rowStep) * 2.0f
         var bestSize = low
-        
+
         repeat(10) {
             val mid = (low + high) / 2f
             textPaint.textSize = mid
@@ -285,7 +284,7 @@ class OcrSubsamplingImageView(
             val charWidth = textPaint.measureText(text.take(1))
             val fm = textPaint.fontMetrics
             val charHeight = fm.descent - fm.ascent
-            
+
             if (charWidth <= sW * 1.05f && charHeight <= rowStep * 1.05f) {
                 bestSize = mid
                 low = mid + 0.1f
@@ -293,14 +292,14 @@ class OcrSubsamplingImageView(
                 high = mid - 0.1f
             }
         }
-        
+
         textPaint.textSize = bestSize
         textPaint.textAlign = Paint.Align.CENTER
-        
+
         val fm = textPaint.fontMetrics
         val baselineShift = -(fm.ascent + fm.descent) / 2f
         val x = tl.x + sW / 2f
-        
+
         text.forEachIndexed { i, ch ->
             val yCenter = tl.y + rowStep * (i + 0.5f)
             canvas.drawText(ch.toString(), x, yCenter + baselineShift, textPaint)
@@ -413,7 +412,7 @@ class OcrSubsamplingImageView(
             downOnOcrBox = false
             swipeReleased = false
         }
-        
+
         // On ACTION_DOWN, check if we hit an OCR block and cache the result
         if (event.actionMasked == MotionEvent.ACTION_DOWN && ocrEnabled) {
             cachedHitBlock = hitTestSource(event.x, event.y)

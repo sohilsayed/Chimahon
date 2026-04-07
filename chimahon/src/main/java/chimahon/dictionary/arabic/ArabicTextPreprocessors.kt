@@ -3,7 +3,7 @@ package chimahon.dictionary.arabic
 object ArabicTextPreprocessors {
 
     private val diacriticsRegex = Regex(
-        "[\u0618\u0619\u061A\u064B\u064C\u064D\u064E\u064F\u0650\u0651\u0652\u0653\u0654\u0655\u0656\u0670]"
+        "[\u0618\u0619\u061A\u064B\u064C\u064D\u064E\u064F\u0650\u0651\u0652\u0653\u0654\u0655\u0656\u0670]",
     )
 
     fun removeDiacritics(text: String): List<String> =

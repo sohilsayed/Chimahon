@@ -420,6 +420,10 @@
         <activity
             android:name="com.journeyapps.barcodescanner.CaptureActivity"
             tools:remove="screenOrientation" />
+
+        <activity
+            android:name="com.canhub.cropper.CropImageActivity"
+            android:theme="@style/Base.Theme.AppCompat" />
     </application>
 
 </manifest>

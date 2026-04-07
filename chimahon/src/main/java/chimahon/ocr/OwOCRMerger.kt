@@ -481,7 +481,7 @@ internal object OwOCRMerger {
 
     private fun BoundingBox.toNormalized(): NormalizedBBox =
         NormalizedBBox(x, y, x + width, y + height)
-    
+
     private fun NormalizedBBox.toBoundingBox(): BoundingBox =
         BoundingBox(x = left, y = top, width = width, height = height, rotation = rotation)
 

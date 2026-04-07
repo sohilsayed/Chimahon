@@ -114,7 +114,8 @@ class OcrStore(
                     task.copy(status = OcrQueueStatus.PENDING)
                 }
                 OcrQueueStatus.COMPLETED,
-                OcrQueueStatus.CANCELLED -> {
+                OcrQueueStatus.CANCELLED,
+                -> {
                     changed = true
                     null
                 }

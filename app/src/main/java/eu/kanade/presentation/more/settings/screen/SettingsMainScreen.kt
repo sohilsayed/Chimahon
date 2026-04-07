@@ -14,8 +14,8 @@ import androidx.compose.material.icons.outlined.CollectionsBookmark
 import androidx.compose.material.icons.outlined.Explore
 import androidx.compose.material.icons.outlined.GetApp
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Security

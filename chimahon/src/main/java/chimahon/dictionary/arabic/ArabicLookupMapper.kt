@@ -9,14 +9,14 @@ object ArabicLookupMapper {
         originalQuery: String,
         deinflectedText: String,
         term: TermResult,
-        preprocessorSteps: Int = 0
+        preprocessorSteps: Int = 0,
     ): LookupResult {
         return LookupResult(
             matched = originalQuery,
             deinflected = deinflectedText,
             process = emptyArray(),
             term = term,
-            preprocessorSteps = preprocessorSteps
+            preprocessorSteps = preprocessorSteps,
         )
     }
 
@@ -24,7 +24,7 @@ object ArabicLookupMapper {
         originalQuery: String,
         candidates: List<String>,
         terms: List<TermResult>,
-        preprocessorSteps: Int = 0
+        preprocessorSteps: Int = 0,
     ): List<LookupResult> {
         val termsByText = terms.groupBy { it.expression }
         return candidates.flatMap { candidate ->

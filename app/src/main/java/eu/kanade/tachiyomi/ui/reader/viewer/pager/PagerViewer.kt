@@ -201,17 +201,6 @@ abstract class PagerViewer(
     }
 
     /**
-     * Captures a screenshot of the currently visible page at screen resolution.
-     */
-    override fun captureScreenshot(): android.graphics.Bitmap? {
-        val currentItem = pager.currentItem
-        val readerItem = adapter.joinedItems.getOrNull(currentItem) ?: return null
-        val page = (readerItem.first as? ReaderPage) ?: (readerItem.second as? ReaderPage) ?: return null
-        val holder = getPageHolder(page) ?: return null
-        return holder.captureVisibleBitmap()
-    }
-
-    /**
      * Returns the PagerPageHolder for the provided page
      */
     private fun getPageHolder(page: ReaderPage): PagerPageHolder? =

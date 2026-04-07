@@ -46,9 +46,9 @@ import com.github.chrisbanes.photoview.PhotoView
 import eu.kanade.domain.base.BasePreferences
 import eu.kanade.tachiyomi.data.coil.cropBorders
 import eu.kanade.tachiyomi.data.coil.customDecoder
-import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.LandscapeZoomScaleType
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryBootstrapHtml
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
+import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences.LandscapeZoomScaleType
 import eu.kanade.tachiyomi.util.system.animatorDurationScale
 import eu.kanade.tachiyomi.util.view.isVisibleOnScreen
 import logcat.LogPriority
@@ -261,12 +261,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     /**
      * Captures the currently visible page content as a bitmap at screen resolution.
-     * Uses View.drawToBitmap() which renders the view's current visual state.
      */
     fun captureVisibleBitmap(): android.graphics.Bitmap? {
         val view = pageView ?: return null
         return try {
-            android.view.View.drawToBitmap(view)
+            val width = view.width
+            val height = view.height
+            if (width <= 0 || height <= 0) return null
+            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            view.draw(canvas)
+            bitmap
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to capture visible bitmap" }
             null
@@ -637,7 +642,7 @@ open class ReaderPageImageView @JvmOverloads constructor(
     /**
      * Handle tap on OCR block: first tap activates, second tap triggers lookup.
      *
-    * Called by [OcrSubsamplingImageView.OcrGestureListener.onSingleTapUp].
+     * Called by [OcrSubsamplingImageView.OcrGestureListener.onSingleTapUp].
      */
     internal fun handleOcrTap(
         block: OcrTextBlock,

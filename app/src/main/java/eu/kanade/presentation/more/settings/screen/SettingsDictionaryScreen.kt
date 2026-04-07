@@ -10,6 +10,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,9 +87,9 @@ private const val TAG = "DictionaryImport"
 private val _dictionaryNames = MutableStateFlow<List<String>>(emptyList())
 private val dictionaryNames = _dictionaryNames.asStateFlow()
 
-private val markerDisplayLabels: Map<String, String> = Marker.ALL.associateWith { marker ->
+private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.associateWith { marker ->
     val isTodo = marker in Marker.TODO_MARKERS
-    val prefix = if (isTodo) "[TODO] " else ""
+    val prefix = if (isTodo) "" else ""
     when (marker) {
         Marker.EXPRESSION -> "${prefix}Expression"
         Marker.READING -> "${prefix}Reading"
@@ -209,7 +209,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                 Preference.PreferenceItem.SliderPreference(
                     value = scale,
                     title = stringResource(MR.strings.pref_dict_popup_scale),
-                    subtitle = "${scale}%",
+                    subtitle = "$scale%",
                     valueRange = 50..200,
                     onValueChanged = { newValue ->
                         scalePref.set(newValue)
@@ -448,9 +448,9 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                     tint = MaterialTheme.colorScheme.error,
                                                     modifier = Modifier.size(16.dp),
                                                 )
-    }
-    }
-}
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -518,6 +518,9 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val tagsPref = remember { dictionaryPreferences.ankiDefaultTags() }
         val tags by tagsPref.collectAsState()
+
+        val cropModePref = remember { dictionaryPreferences.ankiCropMode() }
+        val cropMode by cropModePref.collectAsState()
 
         var decks by remember { mutableStateOf<List<String>>(emptyList()) }
         var models by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -858,6 +861,49 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 modifier = Modifier.fillMaxWidth(),
                                 supportingText = { Text("Comma-separated tags") },
                             )
+
+                            // Crop mode
+                            var cropModeExpanded by remember { mutableStateOf(false) }
+                            val cropModeOptions = listOf("full" to "Full Image", "crop" to "Crop Selection")
+                            val cropModeDisplay = cropModeOptions.find { it.first == cropMode }?.second ?: "Full Image"
+
+                            ExposedDropdownMenuBox(
+                                expanded = cropModeExpanded,
+                                onExpandedChange = { cropModeExpanded = it },
+                            ) {
+                                OutlinedTextField(
+                                    value = cropModeDisplay,
+                                    onValueChange = {},
+                                    label = { Text("Screenshot Mode") },
+                                    readOnly = true,
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .menuAnchor(),
+                                    enabled = false,
+                                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                        disabledTextColor = MaterialTheme.colorScheme.onSurface,
+                                        disabledBorderColor = MaterialTheme.colorScheme.outline,
+                                        disabledLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    ),
+                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = cropModeExpanded) },
+                                )
+
+                                ExposedDropdownMenu(
+                                    expanded = cropModeExpanded,
+                                    onDismissRequest = { cropModeExpanded = false },
+                                ) {
+                                    cropModeOptions.forEach { (value, label) ->
+                                        DropdownMenuItem(
+                                            text = { Text(label) },
+                                            onClick = {
+                                                cropModePref.set(value)
+                                                cropModeExpanded = false
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     },
                 ),
@@ -1110,77 +1156,77 @@ object SettingsDictionaryScreen : SearchableSettings {
     }
 }
 
-    private suspend fun importDictionaryFromUri(context: Context, uri: Uri, currentOrder: String): Pair<String, Boolean> {
-        return withContext(Dispatchers.IO) {
-            val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
-            Log.d(TAG, "importDictionaryFromUri: dictionariesDir=${dictionariesDir.absolutePath}")
+private suspend fun importDictionaryFromUri(context: Context, uri: Uri, currentOrder: String): Pair<String, Boolean> {
+    return withContext(Dispatchers.IO) {
+        val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
+        Log.d(TAG, "importDictionaryFromUri: dictionariesDir=${dictionariesDir.absolutePath}")
 
-            if (!dictionariesDir.exists() && !dictionariesDir.mkdirs()) {
-                Log.e(TAG, "importDictionaryFromUri: failed to create dictionariesDir")
-                return@withContext Pair(
-                    context.stringResource(MR.strings.storage_failed_to_create_directory, dictionariesDir.absolutePath),
-                    false,
-                )
+        if (!dictionariesDir.exists() && !dictionariesDir.mkdirs()) {
+            Log.e(TAG, "importDictionaryFromUri: failed to create dictionariesDir")
+            return@withContext Pair(
+                context.stringResource(MR.strings.storage_failed_to_create_directory, dictionariesDir.absolutePath),
+                false,
+            )
+        }
+
+        val tempZip = File(context.cacheDir, "chimahon_import_${System.currentTimeMillis()}.zip")
+        Log.d(TAG, "importDictionaryFromUri: tempZip=${tempZip.absolutePath}")
+
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tempZip.outputStream().use { output ->
+                    input.copyTo(output)
+                    Log.d(TAG, "importDictionaryFromUri: copied zip to temp file, size=${tempZip.length()}")
+                }
+            } ?: return@withContext Pair(context.stringResource(MR.strings.file_null_uri_error), false)
+
+            Log.d(TAG, "importDictionaryFromUri: calling HoshiDicts.importDictionary...")
+            val result = HoshiDicts.importDictionary(
+                zipPath = tempZip.absolutePath,
+                outputDir = dictionariesDir.absolutePath,
+            )
+            Log.d(TAG, "importDictionaryFromUri: HoshiDicts result: success=${result.success} terms=${result.termCount} meta=${result.metaCount} media=${result.mediaCount}")
+
+            if (!result.success) {
+                Log.e(TAG, "importDictionaryFromUri: import failed")
+                return@withContext Pair(context.stringResource(MR.strings.pref_import_dictionary_failed), false)
             }
 
-            val tempZip = File(context.cacheDir, "chimahon_import_${System.currentTimeMillis()}.zip")
-            Log.d(TAG, "importDictionaryFromUri: tempZip=${tempZip.absolutePath}")
+            val newDictName = dictionariesDir.listFiles()
+                ?.filter { it.isDirectory }
+                ?.maxByOrNull { it.lastModified() }
+                ?.name
+            Log.d(TAG, "importDictionaryFromUri: newDictName=$newDictName")
 
-            try {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    tempZip.outputStream().use { output ->
-                        input.copyTo(output)
-                        Log.d(TAG, "importDictionaryFromUri: copied zip to temp file, size=${tempZip.length()}")
-                    }
-                } ?: return@withContext Pair(context.stringResource(MR.strings.file_null_uri_error), false)
-
-                Log.d(TAG, "importDictionaryFromUri: calling HoshiDicts.importDictionary...")
-                val result = HoshiDicts.importDictionary(
-                    zipPath = tempZip.absolutePath,
-                    outputDir = dictionariesDir.absolutePath,
-                )
-                Log.d(TAG, "importDictionaryFromUri: HoshiDicts result: success=${result.success} terms=${result.termCount} meta=${result.metaCount} media=${result.mediaCount}")
-
-                if (!result.success) {
-                    Log.e(TAG, "importDictionaryFromUri: import failed")
-                    return@withContext Pair(context.stringResource(MR.strings.pref_import_dictionary_failed), false)
+            if (newDictName != null) {
+                val orderList = currentOrder.split(",").filter { it.isNotBlank() }
+                val newOrderList = orderList + newDictName
+                Log.d(TAG, "importDictionaryFromUri: updating order to: $newOrderList")
+                withContext(Dispatchers.Main) {
+                    Injekt.get<DictionaryPreferences>().dictionaryOrder().set(newOrderList.joinToString(","))
                 }
+            }
 
-                val newDictName = dictionariesDir.listFiles()
-                    ?.filter { it.isDirectory }
-                    ?.maxByOrNull { it.lastModified() }
-                    ?.name
-                Log.d(TAG, "importDictionaryFromUri: newDictName=$newDictName")
-
-                if (newDictName != null) {
-                    val orderList = currentOrder.split(",").filter { it.isNotBlank() }
-                    val newOrderList = orderList + newDictName
-                    Log.d(TAG, "importDictionaryFromUri: updating order to: $newOrderList")
-                    withContext(Dispatchers.Main) {
-                        Injekt.get<DictionaryPreferences>().dictionaryOrder().set(newOrderList.joinToString(","))
-                    }
-                }
-
-                Pair(
-                    context.stringResource(
-                        MR.strings.pref_import_dictionary_success,
-                        result.termCount,
-                        result.metaCount,
-                        result.mediaCount,
-                    ),
-                    true,
-                )
-            } catch (e: UnsatisfiedLinkError) {
-                Log.e(TAG, "importDictionaryFromUri: UnsatisfiedLinkError", e)
-                Pair("Native library not loaded. Check build configuration.", false)
-            } catch (e: Throwable) {
-                Log.e(TAG, "importDictionaryFromUri: exception", e)
-                Pair(e.message ?: context.stringResource(MR.strings.unknown_error), false)
-            } finally {
-                if (tempZip.exists()) {
-                    tempZip.delete()
-                    Log.d(TAG, "importDictionaryFromUri: deleted temp file")
-                }
+            Pair(
+                context.stringResource(
+                    MR.strings.pref_import_dictionary_success,
+                    result.termCount,
+                    result.metaCount,
+                    result.mediaCount,
+                ),
+                true,
+            )
+        } catch (e: UnsatisfiedLinkError) {
+            Log.e(TAG, "importDictionaryFromUri: UnsatisfiedLinkError", e)
+            Pair("Native library not loaded. Check build configuration.", false)
+        } catch (e: Throwable) {
+            Log.e(TAG, "importDictionaryFromUri: exception", e)
+            Pair(e.message ?: context.stringResource(MR.strings.unknown_error), false)
+        } finally {
+            if (tempZip.exists()) {
+                tempZip.delete()
+                Log.d(TAG, "importDictionaryFromUri: deleted temp file")
             }
         }
     }
+}

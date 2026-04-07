@@ -103,7 +103,7 @@ class LensClient(
                     }
                 }
                 MergerType.OWOCR -> rawChunks.flatMap { chunk ->
-                    // OWOCR: toEngineLine already normalizes coords to 0-1, 
+                    // OWOCR: toEngineLine already normalizes coords to 0-1,
                     // OwOCRMerger.merge outputs normalized results - skip double normalization
                     val engineLines = chunk.lines.map { it.toEngineLine(chunk, language) }
                     OwOCRMerger.merge(engineLines, config)
@@ -127,8 +127,10 @@ class LensClient(
             val duplicate = kept.any { existing ->
                 sameOrientation(existing, candidate) &&
                     sameText(existing.text, candidate.text) &&
-                    (iou(existing.tightBoundingBox, candidate.tightBoundingBox) >= 0.55 ||
-                        closeCenters(existing.tightBoundingBox, candidate.tightBoundingBox))
+                    (
+                        iou(existing.tightBoundingBox, candidate.tightBoundingBox) >= 0.55 ||
+                            closeCenters(existing.tightBoundingBox, candidate.tightBoundingBox)
+                        )
             }
             if (!duplicate) {
                 kept += candidate

@@ -34,33 +34,32 @@ import cafe.adriel.voyager.navigator.tab.TabOptions
 import chimahon.DictionaryStyle
 import chimahon.HoshiDicts
 import chimahon.LookupResult
-import chimahon.dictionary.TextType
-import chimahon.dictionary.TextTypeDetector
-import chimahon.dictionary.SimpleTextTypeDetector
-import chimahon.dictionary.arabic.ArabicTextPreprocessors
-import chimahon.dictionary.arabic.ArabicDeinflector
-import chimahon.dictionary.arabic.ArabicLookupMapper
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiResult
-
+import chimahon.dictionary.SimpleTextTypeDetector
+import chimahon.dictionary.TextType
+import chimahon.dictionary.TextTypeDetector
+import chimahon.dictionary.arabic.ArabicDeinflector
+import chimahon.dictionary.arabic.ArabicLookupMapper
+import chimahon.dictionary.arabic.ArabicTextPreprocessors
 import eu.kanade.presentation.util.Tab
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.util.system.toast
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
-import tachiyomi.core.common.i18n.stringResource
-import org.json.JSONArray
-import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
+import org.json.JSONArray
+import org.json.JSONObject
+import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.io.File
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -257,7 +256,7 @@ data object DictionaryTab : Tab {
                             lookupResult.diagnostics?.let { diagnostics ->
                                 Log.i(
                                     "DictionaryPerf",
-                                    "query='${trimmedQuery}' total_ms=${diagnostics.totalMs} " +
+                                    "query='$trimmedQuery' total_ms=${diagnostics.totalMs} " +
                                         "create_session_ms=${diagnostics.sessionCreateMs} rebuild_ms=${diagnostics.rebuildMs} " +
                                         "lookup_ms=${diagnostics.lookupMs} media_ms=${diagnostics.mediaMs} " +
                                         "ram_mb_before=${diagnostics.ramBeforeMb} ram_mb_after=${diagnostics.ramAfterMb} " +
@@ -284,25 +283,25 @@ data object DictionaryTab : Tab {
             if (shouldMountWebView) {
                 // Create the WebView only when the user starts searching, so the search bar
                 // renders immediately when opening the tab.
-                    DictionaryEntryWebView(
-                        results = results,
-                        styles = styles,
-                        mediaDataUris = mediaDataUris,
-                        placeholder = if (hasSearched) {
-                            stringResource(MR.strings.no_results_found)
-                        } else {
-                            "Search to view dictionary entries"
-                        },
-                        showFrequencyHarmonic = showFreqHarmonic,
-                        existingExpressions = existingExpressions,
-                        webViewProvider = { context ->
-                            retainedWebView ?: WebView(context).also { retainedWebView = it }
-                        },
-                        onAnkiLookup = onAnkiLookup,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                    )
+                DictionaryEntryWebView(
+                    results = results,
+                    styles = styles,
+                    mediaDataUris = mediaDataUris,
+                    placeholder = if (hasSearched) {
+                        stringResource(MR.strings.no_results_found)
+                    } else {
+                        "Search to view dictionary entries"
+                    },
+                    showFrequencyHarmonic = showFreqHarmonic,
+                    existingExpressions = existingExpressions,
+                    webViewProvider = { context ->
+                        retainedWebView ?: WebView(context).also { retainedWebView = it }
+                    },
+                    onAnkiLookup = onAnkiLookup,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                )
             } else {
                 Column(
                     modifier = Modifier

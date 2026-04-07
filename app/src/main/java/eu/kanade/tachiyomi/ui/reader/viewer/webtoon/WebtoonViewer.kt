@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.animation.LinearInterpolator
+import android.webkit.WebView
 import androidx.annotation.ColorInt
 import androidx.core.app.ActivityCompat
 import androidx.core.view.doOnLayout
@@ -20,7 +21,6 @@ import eu.kanade.tachiyomi.ui.reader.ReaderActivity
 import eu.kanade.tachiyomi.ui.reader.model.ChapterTransition
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
-import android.webkit.WebView
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
 import eu.kanade.tachiyomi.ui.reader.viewer.ViewerNavigation.NavigationRegion
@@ -261,16 +261,6 @@ class WebtoonViewer(
      */
     override fun getView(): View {
         return frame
-    }
-
-    /**
-     * Captures a screenshot of the currently visible page at screen resolution.
-     */
-    override fun captureScreenshot(): android.graphics.Bitmap? {
-        val position = layoutManager.findLastEndVisibleItemPosition()
-        val item = adapter.items.getOrNull(position) as? ReaderPage ?: return null
-        val child = recycler.findViewHolderForAdapterPosition(position) as? WebtoonPageHolder ?: return null
-        return child.frame.captureVisibleBitmap()
     }
 
     /**

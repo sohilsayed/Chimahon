@@ -297,6 +297,9 @@ dependencies {
     }
     implementation(libs.image.decoder)
 
+    // Image cropper
+    implementation(libs.android.image.cropper)
+
     // UI libraries
     implementation(libs.material)
     implementation(libs.flexible.adapter.core)

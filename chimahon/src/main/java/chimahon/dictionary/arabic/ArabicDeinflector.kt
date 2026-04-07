@@ -426,9 +426,10 @@ object ArabicDeinflector {
             val deinflected = when (rule) {
                 is Rule.Prefix -> rule.deinflectedPrefix + text.drop(rule.inflectedPrefix.length)
                 is Rule.Suffix -> text.dropLast(rule.inflectedSuffix.length) + rule.deinflectedSuffix
-                is Rule.Sandwich -> rule.deinflectedPrefix +
-                    text.drop(rule.inflectedPrefix.length).dropLast(rule.inflectedSuffix.length) +
-                    rule.deinflectedSuffix
+                is Rule.Sandwich ->
+                    rule.deinflectedPrefix +
+                        text.drop(rule.inflectedPrefix.length).dropLast(rule.inflectedSuffix.length) +
+                        rule.deinflectedSuffix
             }
 
             val key = deinflected to rule.conditionsOut

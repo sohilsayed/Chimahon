@@ -13,6 +13,7 @@ firebase-bom = "34.9.0"
 markdown = "0.39.2"
 junit = "6.0.3"
 materialKolor = "5.0.0-alpha06"
+image-cropper = "4.7.0"
 
 [libraries]
 desugar = "com.android.tools:desugar_jdk_libs:2.1.5"
@@ -61,6 +62,8 @@ material = "com.google.android.material:material:1.13.0"
 flexible-adapter-core = "com.github.arkon.FlexibleAdapter:flexible-adapter:c8013533"
 photoview = "com.github.chrisbanes:PhotoView:2.3.0"
 directionalviewpager = "com.github.tachiyomiorg:DirectionalViewPager:1.0.0"
+
+android-image-cropper = { module = "com.vanniktech:android-image-cropper", version.ref = "image-cropper" }
 compose-materialmotion = "io.github.fornewid:material-motion-compose-core:2.0.1"
 compose-webview = "io.github.kevinnzou:compose-webview:0.33.6"
 compose-grid = "io.woong.compose.grid:grid:1.2.2"

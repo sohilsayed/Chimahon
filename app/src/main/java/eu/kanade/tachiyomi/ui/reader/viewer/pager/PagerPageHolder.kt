@@ -3,8 +3,8 @@ package eu.kanade.tachiyomi.ui.reader.viewer.pager
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
-import android.webkit.WebView
 import android.view.LayoutInflater
+import android.webkit.WebView
 import androidx.annotation.ColorInt
 import androidx.core.view.isVisible
 import chimahon.DictionaryRepository

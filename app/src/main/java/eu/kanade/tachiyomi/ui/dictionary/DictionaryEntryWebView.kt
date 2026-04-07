@@ -179,7 +179,9 @@ private class PayloadBridge {
     @Volatile
     private var _json: String = ""
 
-    fun setJson(value: String) { _json = value }
+    fun setJson(value: String) {
+        _json = value
+    }
 
     @JavascriptInterface
     fun getJson(): String = _json

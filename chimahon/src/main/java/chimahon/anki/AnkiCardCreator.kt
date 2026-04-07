@@ -131,7 +131,7 @@ object Marker {
 // =============================================================================
 
 sealed class AnkiResult {
-    data object Success : AnkiResult()
+    data class Success(val noteId: Long) : AnkiResult()
     data class CardExists(val noteId: Long) : AnkiResult()
     data class Error(val message: String) : AnkiResult()
     data object NotConfigured : AnkiResult()
@@ -162,7 +162,7 @@ object AnkiCardCreator {
         glossaryIndex: Int? = null,
     ): AnkiResult {
         android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, fieldMapJson=$fieldMapJson, glossaryIndex=$glossaryIndex")
-        
+
         if (deck.isBlank() || model.isBlank()) {
             android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
             return AnkiResult.NotConfigured
@@ -208,14 +208,14 @@ object AnkiCardCreator {
                     "prevent" -> return AnkiResult.CardExists(existing.first())
                     "overwrite" -> {
                         bridge.updateNoteFields(existing.first(), fields)
-                        return AnkiResult.Success
+                        return AnkiResult.Success(existing.first())
                     }
                 }
             }
         }
 
-        bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
-        return AnkiResult.Success
+        val noteId = bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
+        return AnkiResult.Success(noteId)
     }
 
     private fun filterToSingleGlossary(result: LookupResult, glossaryIndex: Int): LookupResult {
@@ -224,7 +224,7 @@ object AnkiCardCreator {
         return result.copy(
             term = result.term.copy(
                 glossaries = filteredGlossaries,
-            )
+            ),
         )
     }
 
@@ -985,6 +985,6 @@ object AnkiCardCreator {
         } catch (e: Exception) {
             "screenshot_${System.currentTimeMillis()}"
         }
-        return "chimahon_${hash}.png"
+        return "chimahon_$hash.png"
     }
 }

@@ -2,13 +2,13 @@ package eu.kanade.tachiyomi.ui.reader.viewer
 
 import android.graphics.Bitmap
 import android.webkit.WebView
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -21,14 +21,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import androidx.compose.ui.unit.dp
 import chimahon.DictionaryRepository
 import chimahon.LookupResult
 import chimahon.MediaInfo
@@ -61,6 +61,8 @@ fun OcrLookupPopup(
     anchorY: Float,
     mediaInfo: MediaInfo? = null,
     screenshot: Bitmap? = null,
+    onRequestScreenshot: (() -> Bitmap?)? = null,
+    onCropTriggered: ((Long, Int?) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -102,42 +104,97 @@ fun OcrLookupPopup(
     val paddingPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
 
-    // Simple callback for Anki lookup - index maps to results array
-    val onAnkiLookup: ((Int) -> Unit)? = if (ankiEnabled) {
-        { index ->
-            val result = results.getOrNull(index)
-            if (result != null) {
-                scope.launch {
-                    val ankiResult = AnkiCardCreator.addToAnki(
-                        context = context,
-                        result = result,
-                        deck = ankiDeck,
-                        model = ankiModel,
-                        fieldMapJson = ankiFieldMap,
-                        tags = ankiTags,
-                        dupCheck = ankiDupCheck,
-                        dupScope = ankiDupScope,
-                        dupAction = ankiDupAction,
-                        sentence = fullText,
-                        offset = charOffset,
-                        media = mediaInfo,
-                        groupTerms = groupTerms,
-                        screenshotBytes = screenshot?.let { bmp ->
-                            val baos = java.io.ByteArrayOutputStream()
-                            bmp.compress(Bitmap.CompressFormat.PNG, 90, baos)
-                            baos.toByteArray()
-                        },
-                    )
-                    when (ankiResult) {
-                        is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
-                        is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
-                        is AnkiResult.Error -> context.toast(
-                            context.stringResource(MR.strings.anki_card_error, ankiResult.message),
-                        )
-                        is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+    val cropMode by dictionaryPreferences.ankiCropMode().collectAsState()
+
+    val screenshotFieldMapped = remember(ankiFieldMap) {
+        try {
+            val fieldMap = org.json.JSONObject(ankiFieldMap)
+            fieldMap.keys().asSequence().any { key ->
+                val value = fieldMap.getString(key)
+                value.contains(chimahon.anki.Marker.SCREENSHOT)
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun performAnkiLookup(index: Int, glossaryIndex: Int?) {
+        val result = results.getOrNull(index) ?: return
+
+        val shouldUseCropMode = screenshotFieldMapped && cropMode == "crop" && onCropTriggered != null
+
+        if (shouldUseCropMode) {
+            scope.launch {
+                val ankiResult = AnkiCardCreator.addToAnki(
+                    context = context,
+                    result = result,
+                    deck = ankiDeck,
+                    model = ankiModel,
+                    fieldMapJson = ankiFieldMap,
+                    tags = ankiTags,
+                    dupCheck = ankiDupCheck,
+                    dupScope = ankiDupScope,
+                    dupAction = ankiDupAction,
+                    sentence = fullText,
+                    offset = charOffset,
+                    media = mediaInfo,
+                    glossaryIndex = glossaryIndex,
+                )
+                if (ankiResult is AnkiResult.Success) {
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onDismiss()
+                        onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
+                    }
+                } else {
+                    withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        when (ankiResult) {
+                            is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
+                            is AnkiResult.Error -> context.toast(
+                                context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+                            )
+                            is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                            else -> {}
+                        }
                     }
                 }
             }
+        } else {
+            scope.launch {
+                val ankiResult = AnkiCardCreator.addToAnki(
+                    context = context,
+                    result = result,
+                    deck = ankiDeck,
+                    model = ankiModel,
+                    fieldMapJson = ankiFieldMap,
+                    tags = ankiTags,
+                    dupCheck = ankiDupCheck,
+                    dupScope = ankiDupScope,
+                    dupAction = ankiDupAction,
+                    sentence = fullText,
+                    offset = charOffset,
+                    media = mediaInfo,
+                    glossaryIndex = glossaryIndex,
+                    screenshotBytes = onRequestScreenshot?.invoke()?.let { bmp ->
+                        val baos = java.io.ByteArrayOutputStream()
+                        bmp.compress(Bitmap.CompressFormat.PNG, 90, baos)
+                        baos.toByteArray()
+                    },
+                )
+                when (ankiResult) {
+                    is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
+                    is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
+                    is AnkiResult.Error -> context.toast(
+                        context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+                    )
+                    is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                }
+            }
+        }
+    }
+
+    val onAnkiLookup: ((Int, Int?) -> Unit)? = if (ankiEnabled) {
+        { index, glossaryIndex ->
+            performAnkiLookup(index, glossaryIndex)
         }
     } else {
         null

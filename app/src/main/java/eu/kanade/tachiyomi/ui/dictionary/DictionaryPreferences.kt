@@ -36,4 +36,6 @@ class DictionaryPreferences(
     fun ankiDuplicateAction() = preferenceStore.getString("pref_anki_duplicate_action", "prevent")
 
     fun ankiDefaultTags() = preferenceStore.getString("pref_anki_default_tags", "chimahon")
+
+    fun ankiCropMode() = preferenceStore.getString("pref_dict_anki_crop_mode", "full")
 }

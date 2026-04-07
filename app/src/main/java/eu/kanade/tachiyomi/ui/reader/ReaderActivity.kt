@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -87,6 +88,7 @@ import eu.kanade.tachiyomi.databinding.ReaderActivityBinding
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.ui.base.activity.BaseActivity
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.main.MainActivity
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.AddToLibraryFirst
 import eu.kanade.tachiyomi.ui.reader.ReaderViewModel.SetAsCoverResult.Error
@@ -105,7 +107,6 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
-import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -201,6 +202,39 @@ class ReaderActivity : BaseActivity() {
     private var loadingIndicator: ReaderProgressIndicator? = null
 
     private var ocrPopupState by mutableStateOf<OcrPopupState?>(null)
+
+    private var pendingNoteId by mutableStateOf<Long?>(null)
+    private var pendingGlossaryIndex by mutableStateOf<Int?>(null)
+
+    private val cropImageLauncher = registerForActivityResult(
+        com.canhub.cropper.CropImageContract(),
+    ) { result ->
+        val noteId = pendingNoteId
+        val glossaryIndex = pendingGlossaryIndex
+        pendingNoteId = null
+        pendingGlossaryIndex = null
+
+        if (result.isSuccessful) {
+            val uri = result.uriContent
+            val bytes = uri?.let { uri ->
+                contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }
+            if (bytes != null) {
+                lifecycleScope.launchIO {
+                    updateAnkiCardWithScreenshot(noteId, bytes, glossaryIndex)
+                }
+            } else {
+                toast(MR.strings.decode_image_error)
+            }
+        } else {
+            val error = result.error
+            if (error != null) {
+                logcat(LogPriority.ERROR, error) { "Image crop failed" }
+            } else {
+                logcat(LogPriority.DEBUG) { "Image crop cancelled" }
+            }
+        }
+    }
 
     data class OcrPopupState(
         val lookupString: String,
@@ -548,6 +582,14 @@ class ReaderActivity : BaseActivity() {
                 anchorY = popupState.anchorY,
                 mediaInfo = popupState.mediaInfo,
                 screenshot = popupState.screenshot,
+                onRequestScreenshot = {
+                    viewModel.getCurrentPageBitmap()
+                },
+                onCropTriggered = { noteId, glossaryIndex ->
+                    pendingNoteId = noteId
+                    pendingGlossaryIndex = glossaryIndex
+                    launchImageCropper()
+                },
             )
         }
 
@@ -1643,4 +1685,113 @@ class ReaderActivity : BaseActivity() {
         }
     }
     // KMK <--
+
+    private fun launchImageCropper() {
+        val bitmap = viewModel.getCurrentPageBitmap()
+        if (bitmap == null) {
+            toast(MR.strings.decode_image_error)
+            return
+        }
+
+        try {
+            val cacheDir = cacheDir
+            val file = java.io.File(cacheDir, "crop_temp_${System.currentTimeMillis()}.png")
+            file.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+            }
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this,
+                "$packageName.provider",
+                file,
+            )
+
+            val cropOptions = com.canhub.cropper.CropImageOptions().apply {
+                cropShape = com.canhub.cropper.CropImageView.CropShape.RECTANGLE
+                initialCropWindowPaddingRatio = 0.25f
+                fixAspectRatio = false
+                aspectRatioX = 1
+                aspectRatioY = 1
+                outputCompressQuality = 90
+                outputCompressFormat = android.graphics.Bitmap.CompressFormat.PNG
+                showProgressBar = true
+                activityMenuIconColor = android.graphics.Color.WHITE
+                activityBackgroundColor = android.graphics.Color.BLACK
+                cropMenuCropButtonTitle = "Crop"
+            }
+
+            val options = com.canhub.cropper.CropImageContractOptions(
+                uri = uri,
+                cropImageOptions = cropOptions,
+            )
+            cropImageLauncher.launch(options)
+            bitmap.recycle()
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to launch image cropper: ${e.message}" }
+            toast(MR.strings.decode_image_error)
+        }
+    }
+
+    private suspend fun updateAnkiCardWithScreenshot(noteId: Long?, screenshotBytes: ByteArray?, glossaryIndex: Int?) {
+        if (noteId == null || screenshotBytes == null) {
+            logcat(LogPriority.WARN) { "updateAnkiCardWithScreenshot: noteId or screenshotBytes is null" }
+            return
+        }
+
+        logcat(LogPriority.DEBUG) { "updateAnkiCardWithScreenshot: noteId=$noteId, bytesSize=${screenshotBytes.size}" }
+
+        try {
+            val bridge = chimahon.anki.AnkiDroidBridge(this)
+            val hash = try {
+                java.security.MessageDigest.getInstance("SHA-1").digest(screenshotBytes).joinToString("") { "%02x".format(it) }.take(12)
+            } catch (e: Exception) {
+                logcat(LogPriority.WARN, e) { "Failed to compute hash, using timestamp" }
+                "screenshot_${System.currentTimeMillis()}"
+            }
+            logcat(LogPriority.DEBUG) { "Storing media with filename: chimahon_$hash.png" }
+
+            val filename = bridge.storeMedia(
+                filename = "chimahon_$hash.png",
+                data = screenshotBytes,
+            )
+            logcat(LogPriority.DEBUG) { "Media stored, filename returned: $filename" }
+
+            val fieldMapJson = Injekt.get<DictionaryPreferences>().ankiFieldMap().get()
+            logcat(LogPriority.DEBUG) { "Field map JSON: $fieldMapJson" }
+
+            val fieldMap = org.json.JSONObject(fieldMapJson)
+            val fields = mutableMapOf<String, String>()
+            val keyIterator = fieldMap.keys()
+            while (keyIterator.hasNext()) {
+                val key = keyIterator.next()
+                val value = fieldMap.getString(key)
+                logcat(LogPriority.DEBUG) { "Checking field: key=$key, value=$value, contains SCREENSHOT=${value.contains(chimahon.anki.Marker.SCREENSHOT)}" }
+                if (value.contains(chimahon.anki.Marker.SCREENSHOT)) {
+                    fields[key] = "<img src=\"$filename\">"
+                    logcat(LogPriority.DEBUG) { "Added screenshot field: key=$key, imgTag=<img src=\"$filename\">" }
+                }
+            }
+
+            logcat(LogPriority.DEBUG) { "Fields to update: $fields" }
+
+            if (fields.isNotEmpty()) {
+                logcat(LogPriority.DEBUG) { "Calling updateNoteFields for note $noteId" }
+                bridge.updateNoteFields(noteId, fields)
+                logcat(LogPriority.DEBUG) { "updateNoteFields completed" }
+                withUIContext {
+                    toast(MR.strings.anki_card_added)
+                }
+            } else {
+                logcat(LogPriority.WARN) { "No fields with screenshot marker found in field map" }
+                withUIContext {
+                    toast(MR.strings.anki_card_error)
+                }
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to update Anki card with screenshot: ${e.message}" }
+            withUIContext {
+                toast(MR.strings.anki_card_error)
+            }
+        }
+    }
 }
