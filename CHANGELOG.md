@@ -4,7 +4,7 @@ All notable changes to Chimahon are documented here.
 
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
-## [Unreleased]
+## [v1.3.0]
 
 ### Added
 - .mokuro OCR integration for reading .mokuro formatted manga files.
