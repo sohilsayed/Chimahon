@@ -122,6 +122,7 @@ class WebtoonViewer(
         recycler.layoutParams = ViewGroup.LayoutParams(MATCH_PARENT, MATCH_PARENT)
         recycler.isFocusable = false
         recycler.itemAnimator = null
+        recycler.useConfirmedSingleTap = isContinuous
         recycler.layoutManager = layoutManager
         recycler.adapter = adapter
         recycler.addOnScrollListener(

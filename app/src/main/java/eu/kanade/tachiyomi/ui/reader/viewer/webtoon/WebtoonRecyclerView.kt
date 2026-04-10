@@ -55,6 +55,7 @@ class WebtoonRecyclerView @JvmOverloads constructor(
 
     var tapListener: ((MotionEvent) -> Unit)? = null
     var longTapListener: ((MotionEvent) -> Boolean)? = null
+    var useConfirmedSingleTap = false
 
     private var isManuallyScrolling = false
     private var tapDuringManualScroll = false
@@ -246,7 +247,14 @@ class WebtoonRecyclerView @JvmOverloads constructor(
         }
 
         override fun onSingleTapUp(ev: MotionEvent): Boolean {
-            if (!tapDuringManualScroll) {
+            if (!useConfirmedSingleTap && !tapDuringManualScroll) {
+                tapListener?.invoke(ev)
+            }
+            return false
+        }
+
+        override fun onSingleTapConfirmed(ev: MotionEvent): Boolean {
+            if (useConfirmedSingleTap && !tapDuringManualScroll) {
                 tapListener?.invoke(ev)
             }
             return false
