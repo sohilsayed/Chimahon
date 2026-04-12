@@ -34,6 +34,7 @@ import chimahon.LookupResult
 import chimahon.MediaInfo
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiResult
+import chimahon.util.ImageEncoder
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryEntryWebView
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.ui.dictionary.getDictionaryPaths
@@ -162,6 +163,7 @@ fun OcrLookupPopup(
             }
         } else {
             scope.launch {
+                val encoding = onRequestScreenshot?.invoke()?.let { ImageEncoder.encode(it) }
                 val ankiResult = AnkiCardCreator.addToAnki(
                     context = context,
                     result = result,
@@ -176,11 +178,7 @@ fun OcrLookupPopup(
                     offset = charOffset,
                     media = mediaInfo,
                     glossaryIndex = glossaryIndex,
-                    screenshotBytes = onRequestScreenshot?.invoke()?.let { bmp ->
-                        val baos = java.io.ByteArrayOutputStream()
-                        bmp.compress(Bitmap.CompressFormat.PNG, 90, baos)
-                        baos.toByteArray()
-                    },
+                    screenshotBytes = encoding?.bytes,
                 )
                 when (ankiResult) {
                     is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)

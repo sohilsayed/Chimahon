@@ -98,6 +98,12 @@ import eu.kanade.tachiyomi.ui.reader.loader.HttpPageLoader
 import eu.kanade.tachiyomi.ui.reader.model.ReaderChapter
 import eu.kanade.tachiyomi.ui.reader.model.ReaderPage
 import eu.kanade.tachiyomi.ui.reader.model.ViewerChapters
+import chimahon.util.ImageEncoder
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
+import tachiyomi.core.common.util.lang.withUIContext
+import logcat.logcat
+import logcat.LogPriority
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderSettingsScreenModel
@@ -131,7 +137,6 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.sample
 import kotlinx.coroutines.launch
-import logcat.LogPriority
 import tachiyomi.core.common.Constants
 import tachiyomi.core.common.i18n.pluralStringResource
 import tachiyomi.core.common.i18n.stringResource
@@ -1727,8 +1732,13 @@ class ReaderActivity : BaseActivity() {
                 fixAspectRatio = false
                 aspectRatioX = 1
                 aspectRatioY = 1
-                outputCompressQuality = 90
-                outputCompressFormat = android.graphics.Bitmap.CompressFormat.PNG
+                outputCompressQuality = 70
+                outputCompressFormat = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.graphics.Bitmap.CompressFormat.WEBP_LOSSY
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.graphics.Bitmap.CompressFormat.WEBP
+                }
                 showProgressBar = true
                 activityMenuIconColor = android.graphics.Color.WHITE
                 activityBackgroundColor = android.graphics.Color.BLACK
@@ -1755,24 +1765,40 @@ class ReaderActivity : BaseActivity() {
 
         logcat(LogPriority.DEBUG) { "updateAnkiCardWithScreenshot: noteId=$noteId, bytesSize=${screenshotBytes.size}" }
 
+        val processedBytes = try {
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(screenshotBytes, 0, screenshotBytes.size)
+            if (bitmap != null) {
+                val result = ImageEncoder.encode(bitmap)
+                bitmap.recycle()
+                result.bytes
+            } else {
+                screenshotBytes
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.WARN, e) { "Failed to re-encode screenshot, using original bytes" }
+            screenshotBytes
+        }
+
         try {
             val bridge = chimahon.anki.AnkiDroidBridge(this)
             val hash = try {
-                java.security.MessageDigest.getInstance("SHA-1").digest(screenshotBytes).joinToString("") { "%02x".format(it) }.take(12)
+                java.security.MessageDigest.getInstance("SHA-1").digest(processedBytes).joinToString("") { "%02x".format(it) }.take(12)
             } catch (e: Exception) {
                 logcat(LogPriority.WARN, e) { "Failed to compute hash, using timestamp" }
                 "screenshot_${System.currentTimeMillis()}"
             }
-            logcat(LogPriority.DEBUG) { "Storing media with filename: chimahon_$hash.png" }
+            logcat(LogPriority.DEBUG) { "Storing media with filename: chimahon_$hash.webp" }
 
             val filename = bridge.storeMedia(
-                filename = "chimahon_$hash.png",
-                data = screenshotBytes,
+                filename = "chimahon_$hash.webp",
+                data = processedBytes,
             )
             logcat(LogPriority.DEBUG) { "Media stored, filename returned: $filename" }
 
-            val fieldMapJson = Injekt.get<DictionaryPreferences>().ankiFieldMap().get()
-            logcat(LogPriority.DEBUG) { "Field map JSON: $fieldMapJson" }
+            val prefs = Injekt.get<DictionaryPreferences>()
+            val activeProfile = prefs.profileStore.getActiveProfile()
+            val fieldMapJson = activeProfile.ankiFieldMap
+            logcat(LogPriority.DEBUG) { "Field map JSON (Profile: ${activeProfile.name}): $fieldMapJson" }
 
             val fieldMap = org.json.JSONObject(fieldMapJson)
             val fields = mutableMapOf<String, String>()
