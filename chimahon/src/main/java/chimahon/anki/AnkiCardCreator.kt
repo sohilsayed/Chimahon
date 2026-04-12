@@ -182,52 +182,52 @@ object AnkiCardCreator {
         }
         return try {
             val fieldMap = parseFieldMap(fieldMapJson)
-        android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
-        val cloze = if (sentence.isNotEmpty() && offset >= 0) {
-            buildCloze(sentence, offset, filteredResult.term.expression, filteredResult.term.reading)
-        } else {
-            null
-        }
-
-        var screenshotFilename: String? = null
-        if (screenshotBytes != null) {
-            try {
-                screenshotFilename = bridge.storeMedia(
-                    filename = generateScreenshotFilename(screenshotBytes),
-                    data = screenshotBytes,
-                )
-                android.util.Log.d(TAG, "addToAnki: stored screenshot media as $screenshotFilename")
-            } catch (e: Exception) {
-                android.util.Log.w(TAG, "addToAnki: failed to store screenshot media", e)
+            android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
+            val cloze = if (sentence.isNotEmpty() && offset >= 0) {
+                buildCloze(sentence, offset, filteredResult.term.expression, filteredResult.term.reading)
+            } else {
+                null
             }
-        }
 
-        val fields = buildFields(filteredResult, fieldMap, cloze, media, screenshotFilename)
-        android.util.Log.d(TAG, "addToAnki: built fields=$fields")
-        val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+            var screenshotFilename: String? = null
+            if (screenshotBytes != null) {
+                try {
+                    screenshotFilename = bridge.storeMedia(
+                        filename = generateScreenshotFilename(screenshotBytes),
+                        data = screenshotBytes,
+                    )
+                    android.util.Log.d(TAG, "addToAnki: stored screenshot media as $screenshotFilename")
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "addToAnki: failed to store screenshot media", e)
+                }
+            }
 
-        if (dupCheck) {
-            val existing = bridge.findNotes(filteredResult.term.expression, model)
-            if (existing.isNotEmpty()) {
-                when (dupAction) {
-                    "prevent" -> return AnkiResult.CardExists(existing.first())
-                    "open" -> return AnkiResult.OpenCard(existing.first())
-                    "overwrite" -> {
-                        bridge.updateNoteFields(existing.first(), fields)
-                        return AnkiResult.Success(existing.first())
+            val fields = buildFields(filteredResult, fieldMap, cloze, media, screenshotFilename)
+            android.util.Log.d(TAG, "addToAnki: built fields=$fields")
+            val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
+
+            if (dupCheck) {
+                val existing = bridge.findNotes(filteredResult.term.expression, model)
+                if (existing.isNotEmpty()) {
+                    when (dupAction) {
+                        "prevent" -> return AnkiResult.CardExists(existing.first())
+                        "open" -> return AnkiResult.OpenCard(existing.first())
+                        "overwrite" -> {
+                            bridge.updateNoteFields(existing.first(), fields)
+                            return AnkiResult.Success(existing.first())
+                        }
                     }
                 }
             }
-        }
 
-        val noteId = bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
-        AnkiResult.Success(noteId)
-    } catch (e: SecurityException) {
-        AnkiResult.PermissionDenied
-    } catch (e: Exception) {
-        AnkiResult.Error(e.message ?: "Unknown error")
+            val noteId = bridge.addNote(deckName = deck, modelName = model, fields = fields, tags = tagList)
+            AnkiResult.Success(noteId)
+        } catch (e: SecurityException) {
+            AnkiResult.PermissionDenied
+        } catch (e: Exception) {
+            AnkiResult.Error(e.message ?: "Unknown error")
+        }
     }
-}
 
     private fun filterToSingleGlossary(result: LookupResult, glossaryIndex: Int): LookupResult {
         val glossary = result.term.glossaries.getOrNull(glossaryIndex) ?: return result
@@ -998,6 +998,6 @@ object AnkiCardCreator {
         } catch (e: Exception) {
             "screenshot_${System.currentTimeMillis()}"
         }
-        return "chimahon_$hash.png"
+        return "chimahon_$hash.webp"
     }
 }

@@ -610,6 +610,17 @@
     <string name="pref_anki_select_deck">Select deck</string>
     <string name="pref_anki_select_model">Select note type</string>
     <string name="pref_anki_loading">Loading…</string>
+    <string name="pref_anki_profiles">Anki profiles</string>
+    <string name="pref_anki_profile_new">New profile</string>
+    <string name="pref_anki_profile_rename">Rename profile</string>
+    <string name="pref_anki_profile_delete">Delete profile</string>
+    <string name="pref_anki_profile_delete_confirm">Delete \"%s\"? This cannot be undone.</string>
+    <string name="pref_anki_profile_name_hint">Profile name</string>
+    <string name="pref_anki_profile_clone">Clone from active</string>
+    <string name="pref_anki_profile_cannot_delete_last">Cannot delete the last profile.</string>
+    <string name="pref_anki_profile_active">Active profile: %s</string>
+    <string name="pref_dict_enabled_in_profile">Enabled in this profile</string>
+
     <string name="anki_add_to">Add to Anki</string>
     <string name="anki_card_added">Card added to Anki</string>
     <string name="anki_card_exists">Card already exists in Anki</string>

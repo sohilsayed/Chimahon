@@ -82,14 +82,21 @@ fun OcrLookupPopup(
     val popupWidthPref by dictionaryPreferences.popupWidth().collectAsState()
     val popupHeightPref by dictionaryPreferences.popupHeight().collectAsState()
     val popupScalePref by dictionaryPreferences.popupScale().collectAsState()
-    val ankiEnabled by dictionaryPreferences.ankiEnabled().collectAsState()
-    val ankiDeck by dictionaryPreferences.ankiDeck().collectAsState()
-    val ankiModel by dictionaryPreferences.ankiModel().collectAsState()
-    val ankiFieldMap by dictionaryPreferences.ankiFieldMap().collectAsState()
-    val ankiDupCheck by dictionaryPreferences.ankiDuplicateCheck().collectAsState()
-    val ankiDupScope by dictionaryPreferences.ankiDuplicateScope().collectAsState()
-    val ankiDupAction by dictionaryPreferences.ankiDuplicateAction().collectAsState()
-    val ankiTags by dictionaryPreferences.ankiDefaultTags().collectAsState()
+    val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
+    val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
+    val profileStore = dictionaryPreferences.profileStore
+    val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+
+    val ankiEnabled = activeProfile.ankiEnabled
+    val ankiDeck = activeProfile.ankiDeck
+    val ankiModel = activeProfile.ankiModel
+    val ankiFieldMap = activeProfile.ankiFieldMap
+    val ankiDupCheck = activeProfile.ankiDupCheck
+    val ankiDupScope = activeProfile.ankiDupScope
+    val ankiDupAction = activeProfile.ankiDupAction
+    val ankiTags = activeProfile.ankiTags
+    val cropMode = activeProfile.ankiCropMode
+
     val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
     val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
 
@@ -104,8 +111,6 @@ fun OcrLookupPopup(
 
     val paddingPx = with(density) { 8.dp.toPx() }
     val gapPx = with(density) { 8.dp.toPx() }
-
-    val cropMode by dictionaryPreferences.ankiCropMode().collectAsState()
 
     val screenshotFieldMapped = remember(ankiFieldMap) {
         try {
@@ -256,7 +261,7 @@ fun OcrLookupPopup(
 
         try {
             val termPaths = withContext(Dispatchers.IO) {
-                getDictionaryPaths(context)
+                getDictionaryPaths(context, activeProfile)
             }
 
             val result = withContext(Dispatchers.IO) {
@@ -326,6 +331,7 @@ fun OcrLookupPopup(
                         popupScale = popupScalePref,
                         showFrequencyHarmonic = showFreqHarmonic,
                         groupTerms = groupTerms,
+                        activeProfile = activeProfile,
                         existingExpressions = existingExpressions,
                         webViewProvider = { webView },
                         onAnkiLookup = onAnkiLookup,

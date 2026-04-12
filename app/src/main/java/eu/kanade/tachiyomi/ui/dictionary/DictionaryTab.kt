@@ -71,10 +71,8 @@ import java.util.Date
 import java.util.LinkedHashMap
 import java.util.Locale
 
-fun getDictionaryPaths(context: android.content.Context): List<String> {
-    val externalFilesDir = context.getExternalFilesDir(null) ?: return emptyList()
-    val dictionariesDir = File(externalFilesDir, "dictionaries")
-
+fun getDictionaryPaths(context: android.content.Context, activeProfileOverride: chimahon.anki.AnkiProfile? = null): List<String> {
+    val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
     if (!dictionariesDir.exists()) return emptyList()
 
     val allDicts = dictionariesDir.listFiles()
@@ -84,20 +82,42 @@ fun getDictionaryPaths(context: android.content.Context): List<String> {
 
     if (allDicts.isEmpty()) return emptyList()
 
-    val orderPref = try {
-        DictionaryPreferences(Injekt.get()).dictionaryOrder()
+    val prefs = try {
+        DictionaryPreferences(Injekt.get())
     } catch (_: Exception) {
-        null
+        return allDicts.map { File(dictionariesDir, it).absolutePath }
     }
 
-    val currentOrder = orderPref?.get()?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-    val orderedNames = currentOrder.filter { it in allDicts }
-    val remainingNames = allDicts.filter { it !in currentOrder }
-    val finalOrder = orderedNames + remainingNames
-
-    return finalOrder.map { name ->
-        File(dictionariesDir, name).absolutePath
+    val activeProfile = activeProfileOverride ?: run {
+        // One-time migration: create "Default" profile from legacy flat keys.
+        prefs.profileStore.migrateIfEmpty(
+            defaultName = "Default",
+            legacyValues = chimahon.anki.AnkiProfileStore.LegacyAnkiValues(
+                deck = prefs.legacyAnkiDeck().get(),
+                model = prefs.legacyAnkiModel().get(),
+                fieldMap = prefs.legacyAnkiFieldMap().get(),
+                tags = prefs.legacyAnkiDefaultTags().get(),
+                dupCheck = prefs.legacyAnkiDuplicateCheck().get(),
+                dupScope = prefs.legacyAnkiDuplicateScope().get(),
+                dupAction = prefs.legacyAnkiDuplicateAction().get(),
+                cropMode = prefs.legacyAnkiCropMode().get(),
+            ),
+            allDictNames = allDicts,
+        )
+        prefs.profileStore.getActiveProfile()
     }
+
+    // Per-profile dictionary order: start with the profile's order,
+    // then append any new dicts added to disk since the profile was last saved.
+    val profileOrder = activeProfile.dictionaryOrder.filter { it in allDicts }
+    val newDicts = allDicts.filter { it !in activeProfile.dictionaryOrder }
+    val orderedNames = profileOrder + newDicts
+
+    // Per-profile activation: empty set means all enabled.
+    val enabled = activeProfile.enabledDictionaries
+    val finalNames = if (enabled.isEmpty()) orderedNames else orderedNames.filter { it in enabled }
+
+    return finalNames.map { File(dictionariesDir, it).absolutePath }
 }
 
 data object DictionaryTab : Tab {
@@ -132,14 +152,20 @@ data object DictionaryTab : Tab {
         var retainedWebView by remember { mutableStateOf<WebView?>(null) }
 
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
-        val ankiEnabled by dictionaryPreferences.ankiEnabled().collectAsState()
-        val ankiDeck by dictionaryPreferences.ankiDeck().collectAsState()
-        val ankiModel by dictionaryPreferences.ankiModel().collectAsState()
-        val ankiFieldMap by dictionaryPreferences.ankiFieldMap().collectAsState()
-        val ankiDupCheck by dictionaryPreferences.ankiDuplicateCheck().collectAsState()
-        val ankiDupScope by dictionaryPreferences.ankiDuplicateScope().collectAsState()
-        val ankiDupAction by dictionaryPreferences.ankiDuplicateAction().collectAsState()
-        val ankiTags by dictionaryPreferences.ankiDefaultTags().collectAsState()
+        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
+        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
+        val profileStore = dictionaryPreferences.profileStore
+        val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+
+        val ankiEnabled = activeProfile.ankiEnabled
+        val ankiDeck = activeProfile.ankiDeck
+        val ankiModel = activeProfile.ankiModel
+        val ankiFieldMap = activeProfile.ankiFieldMap
+        val ankiDupCheck = activeProfile.ankiDupCheck
+        val ankiDupScope = activeProfile.ankiDupScope
+        val ankiDupAction = activeProfile.ankiDupAction
+        val ankiTags = activeProfile.ankiTags
+
         val showFreqHarmonic by dictionaryPreferences.showFrequencyHarmonic().collectAsState()
 
         // Simple callback for Anki lookup - index maps to results array, glossaryIndex is optional
@@ -241,6 +267,7 @@ data object DictionaryTab : Tab {
                             val lookupResult = performLookup(
                                 query = trimmedQuery,
                                 context = context,
+                                activeProfile = activeProfile,
                                 sessionManager = sessionManager,
                             )
                             results = lookupResult.results
@@ -295,6 +322,7 @@ data object DictionaryTab : Tab {
                         "Search to view dictionary entries"
                     },
                     showFrequencyHarmonic = showFreqHarmonic,
+                    activeProfile = activeProfile,
                     existingExpressions = existingExpressions,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
@@ -319,6 +347,7 @@ data object DictionaryTab : Tab {
     private suspend fun performLookup(
         query: String,
         context: android.content.Context,
+        activeProfile: chimahon.anki.AnkiProfile,
         sessionManager: DictionarySessionManager,
     ): LookupUiResult {
         return withContext(Dispatchers.IO) {
@@ -334,7 +363,7 @@ data object DictionaryTab : Tab {
                 )
             }
 
-            val dictionaryPaths = getDictionaryPaths(context)
+            val dictionaryPaths = getDictionaryPaths(context, activeProfile)
 
             if (dictionaryPaths.isEmpty()) {
                 return@withContext LookupUiResult(

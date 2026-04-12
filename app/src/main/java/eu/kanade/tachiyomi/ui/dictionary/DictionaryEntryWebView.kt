@@ -14,13 +14,13 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import chimahon.DictionaryStyle
 import chimahon.LookupResult
 import uy.kohesive.injekt.Injekt
@@ -43,6 +43,7 @@ fun DictionaryEntryWebView(
     popupScale: Int = 100,
     showFrequencyHarmonic: Boolean = false,
     groupTerms: Boolean = true,
+    activeProfile: chimahon.anki.AnkiProfile,
     existingExpressions: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
@@ -58,9 +59,9 @@ fun DictionaryEntryWebView(
     val bgHex = "#%06X".format(0xFFFFFF and colorScheme.surface.toArgb())
     val borderHex = "#%06X".format(0xFFFFFF and colorScheme.outline.toArgb())
 
-    val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, existingExpressions) {
+    val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, activeProfile, existingExpressions) {
         val buildStart = SystemClock.elapsedRealtime()
-        val result = buildRenderPayload(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, existingExpressions)
+        val result = buildRenderPayload(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, activeProfile, existingExpressions)
         Log.i(
             "DictionaryRender",
             "payload_build_ms=${SystemClock.elapsedRealtime() - buildStart} results=${results.size}",
@@ -251,6 +252,7 @@ private fun buildRenderPayload(
     isDark: Boolean,
     showFrequencyHarmonic: Boolean,
     groupTerms: Boolean,
+    activeProfile: chimahon.anki.AnkiProfile,
     existingExpressions: Set<String> = emptySet(),
 ): String {
     val buffer = StringWriter(4096)
@@ -258,10 +260,7 @@ private fun buildRenderPayload(
         w.beginObject()
 
         // Dictionary Priority Order (Titles)
-        val dictionaryPreferences = Injekt.get<DictionaryPreferences>()
-        val currentOrder = dictionaryPreferences.dictionaryOrder().get()
-        val orderedTitles = currentOrder.split(",")
-            .filter { it.isNotBlank() }
+        val orderedTitles = activeProfile.dictionaryOrder
             .map { getDictionaryTitle(context, it) }
 
         w.name("dictionaryOrder").beginArray()
@@ -270,7 +269,7 @@ private fun buildRenderPayload(
         }
         w.endArray()
 
-        w.name("ankiEnabled").value(dictionaryPreferences.ankiEnabled().get())
+        w.name("ankiEnabled").value(activeProfile.ankiEnabled)
 
         w.name("placeholder").value(placeholder)
         w.name("isDark").value(isDark)

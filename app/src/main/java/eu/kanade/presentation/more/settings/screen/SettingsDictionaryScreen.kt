@@ -23,6 +23,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.ExpandLess
 import androidx.compose.material.icons.outlined.ExpandMore
@@ -152,12 +161,19 @@ object SettingsDictionaryScreen : SearchableSettings {
     @Composable
     override fun getPreferences(): List<Preference> {
         val context = LocalContext.current
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+
+        // Trigger recomposition when profile state changes
+        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
+        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
+
         LaunchedEffect(Unit) {
             loadDictionaryList(context)
         }
         return listOf(
             getAppearanceGroup(),
             getImportGroup(),
+            getAnkiProfileGroup(),
             getDictionaryListGroup(),
             getAnkiGroup(),
         )
@@ -243,7 +259,10 @@ object SettingsDictionaryScreen : SearchableSettings {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
-        val orderPref = remember { dictionaryPreferences.dictionaryOrder() }
+        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
+        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
+        val profileStore = dictionaryPreferences.profileStore
+        val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
 
         val importLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.GetMultipleContents(),
@@ -253,7 +272,7 @@ object SettingsDictionaryScreen : SearchableSettings {
             scope.launch {
                 uris.forEach { uri ->
                     Log.d(TAG, "importDictionaryFromUri: starting import for $uri...")
-                    val result = importDictionaryFromUri(context, uri, orderPref.get())
+                    val result = importDictionaryFromUri(context, uri, activeProfile)
                     Log.d(TAG, "importDictionaryFromUri: result=${result.first} success=${result.second}")
 
                     context.toast(result.first)
@@ -317,20 +336,183 @@ object SettingsDictionaryScreen : SearchableSettings {
     }
 
     @Composable
+    private fun getAnkiProfileGroup(): Preference.PreferenceGroup {
+        val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
+        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
+        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
+        val profileStore = dictionaryPreferences.profileStore
+
+        val profiles = remember(rawProfiles) { profileStore.getProfiles() }
+        val activeProfile = remember(profiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+
+        var showNewDialog by remember { mutableStateOf(false) }
+        var showRenameDialog by remember { mutableStateOf<chimahon.anki.AnkiProfile?>(null) }
+        var showDeleteDialog by remember { mutableStateOf<chimahon.anki.AnkiProfile?>(null) }
+
+        if (showNewDialog) {
+            var newName by remember { mutableStateOf("") }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showNewDialog = false },
+                title = { Text(stringResource(MR.strings.pref_anki_profile_new)) },
+                text = {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text(stringResource(MR.strings.pref_anki_profile_name_hint)) },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (newName.isNotBlank()) {
+                                val newProfile = activeProfile.copy(
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    name = newName.trim()
+                                )
+                                profileStore.addProfile(newProfile)
+                                showNewDialog = false
+                            }
+                        }
+                    ) { Text(stringResource(MR.strings.pref_anki_profile_clone)) }
+                },
+                dismissButton = { TextButton(onClick = { showNewDialog = false }) { Text("Cancel") } }
+            )
+        }
+
+        showRenameDialog?.let { profile ->
+            var newName by remember { mutableStateOf(profile.name) }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showRenameDialog = null },
+                title = { Text(stringResource(MR.strings.pref_anki_profile_rename)) },
+                text = {
+                    androidx.compose.material3.OutlinedTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        label = { Text(stringResource(MR.strings.pref_anki_profile_name_hint)) },
+                        singleLine = true,
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            if (newName.isNotBlank()) {
+                                profileStore.updateProfile(profile.copy(name = newName.trim()))
+                                showRenameDialog = null
+                            }
+                        }
+                    ) { Text("Rename") }
+                },
+                dismissButton = { TextButton(onClick = { showRenameDialog = null }) { Text("Cancel") } }
+            )
+        }
+
+        showDeleteDialog?.let { profile ->
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { showDeleteDialog = null },
+                title = { Text(stringResource(MR.strings.pref_anki_profile_delete)) },
+                text = { Text(stringResource(MR.strings.pref_anki_profile_delete_confirm, profile.name)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            profileStore.deleteProfile(profile.id)
+                            showDeleteDialog = null
+                        }
+                    ) { Text("Delete") }
+                },
+                dismissButton = { TextButton(onClick = { showDeleteDialog = null }) { Text("Cancel") } }
+            )
+        }
+
+        return Preference.PreferenceGroup(
+            title = stringResource(MR.strings.pref_anki_profiles),
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_anki_profiles),
+                    content = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                                Text(
+                                    text = stringResource(MR.strings.pref_anki_profile_active, activeProfile.name),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(onClick = { showRenameDialog = activeProfile }) {
+                                    Icon(imageVector = Icons.Outlined.Edit, contentDescription = "Rename")
+                                }
+                                IconButton(
+                                    onClick = { showDeleteDialog = activeProfile },
+                                    enabled = profiles.size > 1
+                                ) {
+                                    Icon(imageVector = Icons.Outlined.Delete, contentDescription = "Delete")
+                                }
+                            }
+                            androidx.compose.foundation.lazy.LazyRow(
+                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                profiles.forEach { profile ->
+                                    item {
+                                        androidx.compose.material3.FilterChip(
+                                            selected = profile.id == activeProfile.id,
+                                            onClick = { profileStore.setActiveProfile(profile.id) },
+                                            label = { Text(profile.name) },
+                                        )
+                                    }
+                                }
+                                item {
+                                    androidx.compose.material3.FilterChip(
+                                        selected = false,
+                                        onClick = { showNewDialog = true },
+                                        label = { Text("+") },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                )
+            )
+        )
+    }
+
+    @Composable
     private fun getDictionaryListGroup(): Preference.PreferenceGroup {
         val context = LocalContext.current
+        val scope = rememberCoroutineScope()
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
-        val orderPref = remember { dictionaryPreferences.dictionaryOrder() }
-        val currentOrder by orderPref.collectAsState()
+
+        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
+        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
+        val profileStore = dictionaryPreferences.profileStore
+
+        val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+        val currentOrder = activeProfile.dictionaryOrder
+        val enabledDicts = activeProfile.enabledDictionaries
+
+        val pickDictionary = androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri != null) {
+                scope.launch {
+                    val (message, success) = importDictionaryFromUri(context, uri, activeProfile)
+                    context.toast(message)
+                    if (success) {
+                        loadDictionaryList(context)
+                    }
+                }
+            }
+        }
 
         var dictToDelete by remember { mutableStateOf<String?>(null) }
 
         val dictionaries by dictionaryNames.collectAsState()
 
         val orderedDicts = remember(dictionaries, currentOrder) {
-            val orderList = currentOrder.split(",").filter { it.isNotBlank() }
-            val ordered = orderList.filter { it in dictionaries }
-            val remaining = dictionaries.filter { it !in orderList }
+            val ordered = currentOrder.filter { it in dictionaries }
+            val remaining = dictionaries.filter { it !in currentOrder }
             ordered + remaining
         }
 
@@ -348,8 +530,9 @@ object SettingsDictionaryScreen : SearchableSettings {
                             if (dictDir.exists()) {
                                 dictDir.deleteRecursively()
                             }
-                            val newOrder = orderedDicts.filter { d -> d != dictName }.joinToString(",")
-                            orderPref.set(newOrder)
+                            val newOrder = orderedDicts.filter { d -> d != dictName }
+                            val newEnabled = enabledDicts - dictName
+                            profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newOrder, enabledDictionaries = newEnabled))
                             loadDictionaryList(context)
                             dictToDelete = null
                         },
@@ -401,12 +584,32 @@ object SettingsDictionaryScreen : SearchableSettings {
                                         ) {
                                             IconButton(
                                                 onClick = {
+                                                    val newEnabled = if (enabledDicts.isEmpty()) {
+                                                        orderedDicts.filter { it != dictName }.toSet()
+                                                    } else if (dictName in enabledDicts) {
+                                                        enabledDicts - dictName
+                                                    } else {
+                                                        enabledDicts + dictName
+                                                    }
+                                                    profileStore.updateProfile(activeProfile.copy(enabledDictionaries = newEnabled))
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                val isEnabled = enabledDicts.isEmpty() || dictName in enabledDicts
+                                                Icon(
+                                                    imageVector = if (isEnabled) Icons.Outlined.Visibility else Icons.Outlined.VisibilityOff,
+                                                    contentDescription = "Toggle visibility",
+                                                    modifier = Modifier.size(16.dp),
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
                                                     if (index > 0) {
                                                         val newList = orderedDicts.toMutableList()
                                                         val temp = newList[index]
                                                         newList[index] = newList[index - 1]
                                                         newList[index - 1] = temp
-                                                        orderPref.set(newList.joinToString(","))
+                                                        profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newList))
                                                     }
                                                 },
                                                 enabled = index > 0,
@@ -425,7 +628,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                         val temp = newList[index]
                                                         newList[index] = newList[index + 1]
                                                         newList[index + 1] = temp
-                                                        orderPref.set(newList.joinToString(","))
+                                                        profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newList))
                                                     }
                                                 },
                                                 enabled = index < orderedDicts.size - 1,
@@ -451,6 +654,20 @@ object SettingsDictionaryScreen : SearchableSettings {
                                         }
                                     }
                                 }
+                                OutlinedButton(
+                                    onClick = { pickDictionary.launch(arrayOf("application/zip", "application/x-zip-compressed")) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(MR.strings.pref_import_dictionary))
+                                }
                             }
                         }
                     },
@@ -467,10 +684,16 @@ object SettingsDictionaryScreen : SearchableSettings {
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
         val bridge = remember { AnkiDroidBridge(context) }
 
-        val enabledPref = remember { dictionaryPreferences.ankiEnabled() }
-        val enabled by enabledPref.collectAsState()
-
         val dictionaries by dictionaryNames.collectAsState()
+
+        val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
+        val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
+        val profileStore = dictionaryPreferences.profileStore
+        val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
+
+        val updateProfile: (chimahon.anki.AnkiProfile.() -> chimahon.anki.AnkiProfile) -> Unit = { transform ->
+            profileStore.updateProfile(profileStore.getActiveProfile().transform())
+        }
 
         var pendingPermissionCheck by remember { mutableStateOf(false) }
 
@@ -481,7 +704,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                 if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && pendingPermissionCheck) {
                     pendingPermissionCheck = false
                     if (bridge.hasPermission()) {
-                        enabledPref.set(true)
+                        updateProfile { copy(ankiEnabled = true) }
                     } else {
                         context.toast(MR.strings.pref_anki_permission_denied)
                     }
@@ -491,35 +714,15 @@ object SettingsDictionaryScreen : SearchableSettings {
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
 
-        val deckPref = remember { dictionaryPreferences.ankiDeck() }
-        val selectedDeck by deckPref.collectAsState()
-
-        val modelPref = remember { dictionaryPreferences.ankiModel() }
-        val selectedModel by modelPref.collectAsState()
-
-        val fieldMapPref = remember { dictionaryPreferences.ankiFieldMap() }
-        val fieldMapJson by fieldMapPref.collectAsState()
-
-        LaunchedEffect(fieldMapJson) {
-            if (fieldMapJson.isBlank()) {
-                fieldMapPref.set("{}")
-            }
-        }
-
-        val dupCheckPref = remember { dictionaryPreferences.ankiDuplicateCheck() }
-        val dupCheck by dupCheckPref.collectAsState()
-
-        val dupScopePref = remember { dictionaryPreferences.ankiDuplicateScope() }
-        val dupScope by dupScopePref.collectAsState()
-
-        val dupActionPref = remember { dictionaryPreferences.ankiDuplicateAction() }
-        val dupAction by dupActionPref.collectAsState()
-
-        val tagsPref = remember { dictionaryPreferences.ankiDefaultTags() }
-        val tags by tagsPref.collectAsState()
-
-        val cropModePref = remember { dictionaryPreferences.ankiCropMode() }
-        val cropMode by cropModePref.collectAsState()
+        val selectedDeck = activeProfile.ankiDeck
+        val selectedModel = activeProfile.ankiModel
+        val fieldMapJson = activeProfile.ankiFieldMap
+        val dupCheck = activeProfile.ankiDupCheck
+        val dupScope = activeProfile.ankiDupScope
+        val dupAction = activeProfile.ankiDupAction
+        val tags = activeProfile.ankiTags
+        val cropMode = activeProfile.ankiCropMode
+        val enabled = activeProfile.ankiEnabled
 
         var decks by remember { mutableStateOf<List<String>>(emptyList()) }
         var models by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -555,14 +758,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                 } else {
                     updated[normalizedName] = convertToStorageFormat(effectiveDisplayValue)
                 }
-                fieldMapPref.set(org.json.JSONObject(updated).toString())
+                updateProfile { copy(ankiFieldMap = org.json.JSONObject(updated).toString()) }
             }
         }
 
         val removeCustomField: (String) -> Unit = { fieldName ->
             val updated = fieldMap.toMutableMap()
             updated.remove(fieldName)
-            fieldMapPref.set(org.json.JSONObject(updated).toString())
+            updateProfile { copy(ankiFieldMap = org.json.JSONObject(updated).toString()) }
         }
 
         // Check AnkiDroid status whenever screen is visible and enabled
@@ -611,7 +814,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                     }.toMap()
 
                     if (detectedMap.isNotEmpty()) {
-                        fieldMapPref.set(org.json.JSONObject(detectedMap).toString())
+                        profileStore.updateProfile(profileStore.getActiveProfile().copy(ankiFieldMap = org.json.JSONObject(detectedMap).toString()))
                     }
                 }
             }
@@ -644,7 +847,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     checked = enabled,
                                     onCheckedChange = { checked ->
                                         if (!checked) {
-                                            enabledPref.set(false)
+                                            updateProfile { copy(ankiEnabled = false) }
                                             return@Switch
                                         }
                                         scope.launch {
@@ -660,7 +863,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                 }
                                                 return@launch
                                             }
-                                            enabledPref.set(true)
+                                            updateProfile { copy(ankiEnabled = true) }
                                         }
                                     },
                                 )
@@ -691,7 +894,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 label = stringResource(MR.strings.pref_anki_deck),
                                 value = selectedDeck,
                                 options = decks,
-                                onValueChange = { deckPref.set(it) },
+                                onValueChange = { updateProfile { copy(ankiDeck = it) } },
                             )
 
                             // Model selector
@@ -703,8 +906,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     if (it == selectedModel) {
                                         return@AnkiDropdownPreference
                                     }
-                                    modelPref.set(it)
-                                    fieldMapPref.set("{}")
+                                    updateProfile { copy(ankiModel = it, ankiFieldMap = "{}") }
                                 },
                             )
 
@@ -822,7 +1024,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 )
                                 Switch(
                                     checked = dupCheck,
-                                    onCheckedChange = { dupCheckPref.set(it) },
+                                    onCheckedChange = { updateProfile { copy(ankiDupCheck = it) } },
                                 )
                             }
 
@@ -832,7 +1034,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                     value = if (dupScope == "all") "Everywhere" else "Deck only",
                                     options = listOf("deck", "all"),
                                     displayOptions = listOf("Deck only", "Everywhere"),
-                                    onValueChange = { dupScopePref.set(it) },
+                                    onValueChange = { updateProfile { copy(ankiDupScope = it) } },
                                 )
                                 AnkiDropdownPreference(
                                     label = stringResource(MR.strings.pref_anki_duplicate_action),
@@ -849,14 +1051,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                                         stringResource(MR.strings.pref_anki_duplicate_overwrite),
                                         stringResource(MR.strings.pref_anki_duplicate_open),
                                     ),
-                                    onValueChange = { dupActionPref.set(it) },
+                                    onValueChange = { updateProfile { copy(ankiDupAction = it) } },
                                 )
                             }
 
                             // Default tags
                             OutlinedTextField(
                                 value = tags,
-                                onValueChange = { tagsPref.set(it) },
+                                onValueChange = { updateProfile { copy(ankiTags = it) } },
                                 label = { Text(stringResource(MR.strings.pref_anki_default_tags)) },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth(),
@@ -898,7 +1100,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                         DropdownMenuItem(
                                             text = { Text(label) },
                                             onClick = {
-                                                cropModePref.set(value)
+                                                updateProfile { copy(ankiCropMode = value) }
                                                 cropModeExpanded = false
                                             },
                                         )
@@ -1157,7 +1359,11 @@ object SettingsDictionaryScreen : SearchableSettings {
     }
 }
 
-private suspend fun importDictionaryFromUri(context: Context, uri: Uri, currentOrder: String): Pair<String, Boolean> {
+private suspend fun importDictionaryFromUri(
+    context: Context,
+    uri: Uri,
+    activeProfile: chimahon.anki.AnkiProfile,
+): Pair<String, Boolean> {
     return withContext(Dispatchers.IO) {
         val dictionariesDir = File(context.getExternalFilesDir(null), "dictionaries")
         Log.d(TAG, "importDictionaryFromUri: dictionariesDir=${dictionariesDir.absolutePath}")
@@ -1200,11 +1406,12 @@ private suspend fun importDictionaryFromUri(context: Context, uri: Uri, currentO
             Log.d(TAG, "importDictionaryFromUri: newDictName=$newDictName")
 
             if (newDictName != null) {
-                val orderList = currentOrder.split(",").filter { it.isNotBlank() }
-                val newOrderList = orderList + newDictName
-                Log.d(TAG, "importDictionaryFromUri: updating order to: $newOrderList")
-                withContext(Dispatchers.Main) {
-                    Injekt.get<DictionaryPreferences>().dictionaryOrder().set(newOrderList.joinToString(","))
+                val orderList = activeProfile.dictionaryOrder.filter { it.isNotBlank() }
+                if (newDictName !in orderList) {
+                    val newOrderList = orderList + newDictName
+                    Log.d(TAG, "importDictionaryFromUri: updating profile order to: $newOrderList")
+                    val prefs = Injekt.get<DictionaryPreferences>()
+                    prefs.profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newOrderList))
                 }
             }
 
