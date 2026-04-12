@@ -246,21 +246,20 @@ object SettingsDictionaryScreen : SearchableSettings {
         val orderPref = remember { dictionaryPreferences.dictionaryOrder() }
 
         val importLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.GetContent(),
-        ) { uri ->
-            Log.d(TAG, "importLauncher: uri=${uri?.toString()}")
-            if (uri == null) {
-                context.toast(MR.strings.file_null_uri_error)
-                return@rememberLauncherForActivityResult
-            }
+            contract = ActivityResultContracts.GetMultipleContents(),
+        ) { uris ->
+            Log.d(TAG, "importLauncher: uris=${uris.size}")
+            if (uris.isEmpty()) return@rememberLauncherForActivityResult
             scope.launch {
-                Log.d(TAG, "importDictionaryFromUri: starting import...")
-                val result = importDictionaryFromUri(context, uri, orderPref.get())
-                Log.d(TAG, "importDictionaryFromUri: result=${result.first} success=${result.second}")
+                uris.forEach { uri ->
+                    Log.d(TAG, "importDictionaryFromUri: starting import for $uri...")
+                    val result = importDictionaryFromUri(context, uri, orderPref.get())
+                    Log.d(TAG, "importDictionaryFromUri: result=${result.first} success=${result.second}")
 
-                context.toast(result.first)
+                    context.toast(result.first)
+                }
 
-                Log.d(TAG, "refreshing dictionary list after import")
+                Log.d(TAG, "refreshing dictionary list after batch import")
                 loadDictionaryList(context)
             }
         }
