@@ -715,7 +715,7 @@
       // Only trigger inside the entries area, not on interactive controls
       const target = e.target;
       if (!target) return;
-      if (target.closest('button, a, .anki-add-btn, .lookup-tab, .inflection-toggle')) return;
+      if (target.closest('button, .anki-add-btn, .lookup-tab, .inflection-toggle')) return;
 
       const word = extractTextAtPoint(t.clientX, t.clientY);
       if (!word) return;
@@ -1073,16 +1073,9 @@
     const href = sanitizeHref(node.href);
     const internal = href && href.startsWith('?');
 
-    const a = document.createElement('a');
+    const a = document.createElement('span');
     a.className = 'gloss-link gloss-sc-a';
     a.dataset.external = String(!internal);
-    if (href) {
-      a.href = href;
-      if (!internal) {
-        a.target = '_blank';
-        a.rel = 'noreferrer noopener';
-      }
-    }
     if (typeof node.title === 'string') a.title = node.title;
     if (typeof node.lang === 'string') {
       a.lang = node.lang;
@@ -1136,7 +1129,7 @@
       ? node.imageRendering
       : (node.pixelated === true ? 'pixelated' : 'auto');
 
-    const link = document.createElement('a');
+    const link = document.createElement('span');
     link.className = 'gloss-image-link gloss-sc-a';
     link.dataset.path = path;
     link.dataset.imageLoadState = src && src.startsWith('data:') ? 'loaded' : 'unloaded';
@@ -1144,7 +1137,6 @@
     link.dataset.imageRendering = imageRendering;
     link.dataset.appearance = typeof node.appearance === 'string' ? node.appearance : 'auto';
     link.dataset.background = String(node.background !== false);
-    if (src) link.href = src;
     if (typeof node.title === 'string') link.title = node.title;
 
     applyCommonStructuredAttributes(link, node);

@@ -4,6 +4,6 @@
         <activity
             android:name="com.canopus.chimareader.ui.reader.NovelReaderActivity"
             android:exported="false"
-            android:theme="@style/Theme.Tachiyomi" />
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
     </application>
 </manifest>
