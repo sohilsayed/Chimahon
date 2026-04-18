@@ -9,10 +9,14 @@ The format follows a Keep a Changelog style and uses Semantic Versioning.
 ### Added
 - Novel Reader with lookup
 
+### Changed
+- Disable popup links
+
 ## [v1.3.6]
 
 ### Fixed
-- fix: revert broken bitmap capture
+- revert broken bitmap capture
+
 
 ## [v1.3.5]
 
@@ -23,7 +27,7 @@ The format follows a Keep a Changelog style and uses Semantic Versioning.
 - Multiple dictionary import support
 - Smart furigana distribution
 
-### Improved
+### Changed
 - OCR lookup and screenshot capture optimizations for Webtoon mode
 - Image exports with WebP compression and resizing
 - Anki dictionary mining UI with card navigation and sorting
