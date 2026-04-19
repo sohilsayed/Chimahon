@@ -885,13 +885,14 @@ private class ReaderAndroidWebView(
                 if (vw) {
                     b.style.setProperty('writing-mode', 'vertical-rl', 'important');
                     b.style.setProperty('column-width', ih + 'px', 'important');
+                    b.style.setProperty('min-height', ih + 'px', 'important');
                 } else {
                     b.style.setProperty('writing-mode', 'horizontal-tb', 'important');
                     b.style.setProperty('column-width', iw + 'px', 'important');
+                    b.style.setProperty('height', ih + 'px', 'important'); // Strict height forces horizontal pagination
                 }
                 b.style.setProperty('box-sizing', 'border-box', 'important');
                 b.style.setProperty('width', iw + 'px', 'important');
-                b.style.setProperty('min-height', ih + 'px', 'important');
                 b.style.setProperty('column-fill', 'auto', 'important');
                 b.style.setProperty('column-gap', '0px', 'important');
                 b.style.setProperty('touch-action', 'none', 'important');
