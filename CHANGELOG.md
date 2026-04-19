@@ -17,7 +17,6 @@ The format follows a Keep a Changelog style and uses Semantic Versioning.
 ### Fixed
 - revert broken bitmap capture
 
-
 ## [v1.3.5]
 
 ### Added

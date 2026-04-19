@@ -71,16 +71,6 @@ data object HistoryTab : Tab {
         resumeLastChapterReadEvent.send(Unit)
     }
 
-    // SY -->
-    @Composable
-    override fun isEnabled(): Boolean {
-        val scope = rememberCoroutineScope()
-        return remember {
-            Injekt.get<UiPreferences>().showNavHistory().asState(scope)
-        }.value
-    }
-    // SY <--
-
     @Composable
     override fun Content() {
         val navigator = LocalNavigator.currentOrThrow

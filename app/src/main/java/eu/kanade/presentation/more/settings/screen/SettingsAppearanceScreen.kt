@@ -328,20 +328,47 @@ object SettingsAppearanceScreen : SearchableSettings {
 
     @Composable
     fun getNavbarGroup(uiPreferences: UiPreferences): Preference.PreferenceGroup {
+        val navigator = LocalNavigator.currentOrThrow
+        val navTabLayoutStr by uiPreferences.navTabLayout().collectAsState()
+
+        // Build dropdown entries from current navbar tabs
+        val navbarEntries = remember(navTabLayoutStr) {
+            val layout = eu.kanade.domain.ui.model.NavTabLayout.parse(navTabLayoutStr)
+            layout.getKeysForSection(eu.kanade.domain.ui.model.NavSection.NAVBAR)
+                .associateWith { key ->
+                    when (key) {
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_LIBRARY -> "Library"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_UPDATES -> "Updates"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_HISTORY -> "History"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_BROWSE -> "Browse"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_DICTIONARY -> "Dictionary"
+                        eu.kanade.domain.ui.model.NavTabLayout.KEY_NOVELS -> "Novels"
+                        else -> key
+                    }
+                }
+                .toImmutableMap()
+        }
+
         return Preference.PreferenceGroup(
             stringResource(SYMR.strings.pref_category_navbar),
             preferenceItems = persistentListOf(
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = uiPreferences.showNavUpdates(),
-                    title = stringResource(SYMR.strings.pref_hide_updates_button),
-                ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = uiPreferences.showNavHistory(),
-                    title = stringResource(SYMR.strings.pref_hide_history_button),
+                Preference.PreferenceItem.ListPreference(
+                    preference = uiPreferences.navStartScreen(),
+                    entries = navbarEntries,
+                    title = stringResource(SYMR.strings.pref_nav_start_screen),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = uiPreferences.bottomBarLabels(),
                     title = stringResource(SYMR.strings.pref_show_bottom_bar_labels),
+                ),
+                Preference.PreferenceItem.TextPreference(
+                    title = stringResource(SYMR.strings.pref_navigation_style),
+                    subtitle = stringResource(SYMR.strings.pref_navigation_style_summary),
+                    onClick = {
+                        navigator.push(
+                            eu.kanade.presentation.more.settings.screen.appearance.NavigationStyleScreen(),
+                        )
+                    },
                 ),
             ),
         )

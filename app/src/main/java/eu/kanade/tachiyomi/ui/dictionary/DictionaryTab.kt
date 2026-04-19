@@ -160,7 +160,6 @@ data object DictionaryTab : Tab {
     @Composable
     override fun Content() {
         val context = LocalContext.current
-        val tabNavigator = LocalTabNavigator.current
         val scope = rememberCoroutineScope()
         val sessionManager = remember { DictionarySessionManager() }
 
@@ -318,7 +317,7 @@ data object DictionaryTab : Tab {
             null
         }
 
-        LaunchedEffect(tabNavigator.current) {
+        LaunchedEffect(Unit) {
             (context as? MainActivity)?.ready = true
         }
 

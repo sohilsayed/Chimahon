@@ -30,7 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.util.fastFilter
 import androidx.compose.ui.util.fastForEach
 import cafe.adriel.voyager.navigator.LocalNavigator
 import cafe.adriel.voyager.navigator.currentOrThrow
@@ -39,6 +38,8 @@ import cafe.adriel.voyager.navigator.tab.TabNavigator
 import eu.kanade.core.preference.asState
 import eu.kanade.domain.source.service.SourcePreferences
 import eu.kanade.domain.ui.UiPreferences
+import eu.kanade.domain.ui.model.NavSection
+import eu.kanade.domain.ui.model.NavTabLayout
 import eu.kanade.presentation.util.Screen
 import eu.kanade.presentation.util.isTabletUi
 import eu.kanade.tachiyomi.ui.browse.BrowseTab
@@ -64,6 +65,7 @@ import tachiyomi.presentation.core.components.material.NavigationBar
 import tachiyomi.presentation.core.components.material.NavigationRail
 import tachiyomi.presentation.core.components.material.Scaffold
 import tachiyomi.presentation.core.i18n.pluralStringResource
+import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 
@@ -77,14 +79,13 @@ object HomeScreen : Screen() {
     private const val TAB_FADE_DURATION = 200
     private const val TAB_NAVIGATOR_KEY = "HomeTabs"
 
-    private val TABS = listOf(
-        LibraryTab,
-        UpdatesTab,
-        HistoryTab,
-        BrowseTab,
-        DictionaryTab,
-        NovelsTab,
-        MoreTab,
+    private val ALL_TABS_MAP = mapOf(
+        NavTabLayout.KEY_LIBRARY to LibraryTab,
+        NavTabLayout.KEY_UPDATES to UpdatesTab,
+        NavTabLayout.KEY_HISTORY to HistoryTab,
+        NavTabLayout.KEY_BROWSE to BrowseTab,
+        NavTabLayout.KEY_DICTIONARY to DictionaryTab,
+        NavTabLayout.KEY_NOVELS to NovelsTab,
     )
 
     @Composable
@@ -93,13 +94,27 @@ object HomeScreen : Screen() {
 
         // SY -->
         val scope = rememberCoroutineScope()
+        val uiPreferences = remember { Injekt.get<UiPreferences>() }
         val alwaysShowLabel by remember {
-            Injekt.get<UiPreferences>().bottomBarLabels().asState(scope)
+            uiPreferences.bottomBarLabels().asState(scope)
+        }
+
+        val navTabLayoutStr by uiPreferences.navTabLayout().collectAsState()
+        val navStartScreenKey by uiPreferences.navStartScreen().collectAsState()
+
+        val navbarTabs = remember(navTabLayoutStr) {
+            val layout = NavTabLayout.parse(navTabLayoutStr)
+            val navbarKeys = layout.getKeysForSection(NavSection.NAVBAR)
+            navbarKeys.mapNotNull { ALL_TABS_MAP[it] } + listOf(MoreTab)
+        }
+
+        val startTab = remember(navStartScreenKey, navbarTabs) {
+            ALL_TABS_MAP[navStartScreenKey]?.takeIf { it in navbarTabs } ?: navbarTabs.first()
         }
         // SY <--
 
         TabNavigator(
-            tab = LibraryTab,
+            tab = startTab,
             key = TAB_NAVIGATOR_KEY,
         ) { tabNavigator ->
             // Provide usable navigator to content screen
@@ -108,10 +123,7 @@ object HomeScreen : Screen() {
                     startBar = {
                         if (isTabletUi()) {
                             NavigationRail {
-                                TABS
-                                    // SY -->
-                                    .fastFilter { it.isEnabled() }
-                                    // SY <--
+                                navbarTabs
                                     .fastForEach {
                                         NavigationRailItem(it/* SY --> */, alwaysShowLabel/* SY <-- */)
                                     }
@@ -129,10 +141,7 @@ object HomeScreen : Screen() {
                                 exit = shrinkVertically(),
                             ) {
                                 NavigationBar {
-                                    TABS
-                                        // SY -->
-                                        .fastFilter { it.isEnabled() }
-                                        // SY <--
+                                    navbarTabs
                                         .fastForEach {
                                             NavigationBarItem(it/* SY --> */, alwaysShowLabel/* SY <-- */)
                                         }
@@ -167,16 +176,16 @@ object HomeScreen : Screen() {
                 }
             }
 
-            val goToLibraryTab = { tabNavigator.current = LibraryTab }
+            val goToStartTab = { tabNavigator.current = startTab }
             BackHandler(
-                enabled = tabNavigator.current != LibraryTab,
-                onBack = goToLibraryTab,
+                enabled = tabNavigator.current != startTab,
+                onBack = goToStartTab,
             )
 
             LaunchedEffect(Unit) {
                 launch {
                     librarySearchEvent.receiveAsFlow().collectLatest {
-                        goToLibraryTab()
+                        tabNavigator.current = LibraryTab
                         LibraryTab.search(it)
                     }
                 }

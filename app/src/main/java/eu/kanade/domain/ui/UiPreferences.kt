@@ -84,6 +84,10 @@ class UiPreferences(
 
     fun showNavHistory() = preferenceStore.getBoolean("pref_show_history_button", true)
 
+    fun navTabLayout() = preferenceStore.getString("pref_nav_tab_layout", "")
+
+    fun navStartScreen() = preferenceStore.getString("pref_nav_start_screen", "Library")
+
     // SY <--
 
     companion object {

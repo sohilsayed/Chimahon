@@ -33,6 +33,8 @@ import eu.kanade.tachiyomi.ui.libraryUpdateError.LibraryUpdateErrorScreen
 import eu.kanade.tachiyomi.ui.setting.SettingsScreen
 import eu.kanade.tachiyomi.ui.stats.StatsScreen
 import eu.kanade.tachiyomi.ui.updates.UpdatesTab
+import eu.kanade.domain.ui.model.NavSection
+import eu.kanade.domain.ui.model.NavTabLayout
 import exh.ui.batchadd.BatchAddScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,8 +79,7 @@ data object MoreTab : Tab {
             incognitoMode = screenModel.incognitoMode,
             onIncognitoModeChange = { screenModel.incognitoMode = it },
             // SY -->
-            showNavUpdates = screenModel.showNavUpdates,
-            showNavHistory = screenModel.showNavHistory,
+            moreTabKeys = NavTabLayout.parse(screenModel.moreTabKeys.value).getKeysForSection(NavSection.MORE),
             // SY <--
             onClickDownloadQueue = { navigator.push(DownloadQueueScreen) },
             onClickCategories = { navigator.push(CategoryScreen()) },
@@ -90,6 +91,10 @@ data object MoreTab : Tab {
             onClickBatchAdd = { navigator.push(BatchAddScreen()) },
             onClickUpdates = { navigator.push(UpdatesTab) },
             onClickHistory = { navigator.push(HistoryTab) },
+            onClickLibrary = { navigator.push(eu.kanade.tachiyomi.ui.library.LibraryTab) },
+            onClickBrowse = { navigator.push(eu.kanade.tachiyomi.ui.browse.BrowseTab) },
+            onClickDictionary = { navigator.push(eu.kanade.tachiyomi.ui.dictionary.DictionaryTab) },
+            onClickNovels = { navigator.push(eu.kanade.tachiyomi.ui.library.novels.NovelsTab) },
             // SY <--
             // KMK -->
             onClickLibraryUpdateErrors = { navigator.push(LibraryUpdateErrorScreen()) },
@@ -118,8 +123,7 @@ private class MoreScreenModel(
     var incognitoMode by preferences.incognitoMode().asState(screenModelScope)
 
     // SY -->
-    val showNavUpdates by uiPreferences.showNavUpdates().asState(screenModelScope)
-    val showNavHistory by uiPreferences.showNavHistory().asState(screenModelScope)
+    val moreTabKeys = uiPreferences.navTabLayout().asState(screenModelScope)
     // SY <--
 
     private var _downloadQueueState: MutableStateFlow<DownloadQueueState> = MutableStateFlow(DownloadQueueState.Stopped)
