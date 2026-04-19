@@ -144,10 +144,15 @@ fun OcrLookupPopup(
                     repository.lookup(query, termPaths)
                 }
                 var existing: Set<String> = emptySet()
-                if (ankiEnabled && ankiModel.isNotBlank() && result.results.isNotEmpty()) {
+                if (ankiEnabled && result.results.isNotEmpty()) {
                     val unique = result.results.map { it.term.expression }.distinct()
                     existing = withContext(Dispatchers.IO) {
-                        AnkiCardCreator.checkExistingCards(context, unique, ankiModel)
+                        AnkiCardCreator.checkExistingCards(
+                            context = context,
+                            expressions = unique,
+                            deckName = ankiDeck,
+                            dupScope = ankiDupScope,
+                        )
                     }
                 }
                 val frame = LookupFrame(

@@ -172,12 +172,6 @@ class AnkiDroidBridge(private val context: Context) {
                 )?.use { c ->
                     while (c.moveToNext()) {
                         val nid = c.getLong(0)
-                        val mid = c.getLong(1)
-
-                        if (modelName != null) {
-                            val actualModel = findModelName(mid)
-                            if (actualModel != modelName) continue
-                        }
 
                         if (deckId != null) {
                             if (!isNoteInDeck(nid, deckId)) continue

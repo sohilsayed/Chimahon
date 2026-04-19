@@ -224,7 +224,7 @@ object AnkiCardCreator {
                     null
                 }
 
-                val existing = bridge.findNotes(filteredResult.term.expression, model, targetDeckId)
+                val existing = bridge.findNotes(filteredResult.term.expression, null, targetDeckId)
                 if (existing.isNotEmpty()) {
                     when (dupAction) {
                         "prevent" -> return AnkiResult.CardExists(existing.first())
@@ -256,16 +256,26 @@ object AnkiCardCreator {
         )
     }
 
-    suspend fun checkExistingCards(context: Context, expressions: List<String>, modelName: String): Set<String> {
+    suspend fun checkExistingCards(
+        context: Context,
+        expressions: List<String>,
+        deckName: String = "",
+        dupScope: String = "collection",
+    ): Set<String> {
         val existing = mutableSetOf<String>()
-        if (modelName.isBlank()) return existing
 
         val bridge = AnkiDroidBridge(context)
         if (!bridge.hasPermission()) return existing
 
+        val targetDeckId = if (dupScope == "deck" && deckName.isNotBlank()) {
+            try { bridge.getDeckId(deckName) } catch (_: Exception) { null }
+        } else {
+            null
+        }
+
         for (expr in expressions.distinct()) {
             try {
-                val notes = bridge.findNotes(expr, modelName)
+                val notes = bridge.findNotes(expr, null, targetDeckId)
                 if (notes.isNotEmpty()) {
                     existing.add(expr)
                 }

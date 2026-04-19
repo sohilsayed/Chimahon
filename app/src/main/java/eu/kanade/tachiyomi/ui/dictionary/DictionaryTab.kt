@@ -225,9 +225,14 @@ data object DictionaryTab : Tab {
                 )
 
                 var existing: Set<String> = emptySet()
-                if (ankiEnabled && ankiModel.isNotBlank() && lookupResult.results.isNotEmpty()) {
+                if (ankiEnabled && lookupResult.results.isNotEmpty()) {
                     val unique = lookupResult.results.map { it.term.expression }.distinct()
-                    existing = AnkiCardCreator.checkExistingCards(context, unique, ankiModel)
+                    existing = AnkiCardCreator.checkExistingCards(
+                        context = context,
+                        expressions = unique,
+                        deckName = ankiDeck,
+                        dupScope = ankiDupScope,
+                    )
                 }
 
                 val frame = TabLookupFrame(
