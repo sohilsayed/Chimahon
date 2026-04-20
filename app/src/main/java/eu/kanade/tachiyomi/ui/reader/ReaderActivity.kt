@@ -115,6 +115,7 @@ import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerConfig
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.VerticalPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
+import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonPageHolder
 import eu.kanade.tachiyomi.ui.webview.WebViewActivity
 import eu.kanade.tachiyomi.util.system.isNightMode
 import eu.kanade.tachiyomi.util.system.openInBrowser
@@ -574,6 +575,19 @@ class ReaderActivity : BaseActivity() {
 
         BackHandler(enabled = ocrPopupState != null) {
             ocrPopupState = null
+            // Also clear the visual highlight on whichever webtoon page has an active block.
+            val viewer = viewModel.state.value.viewer
+            if (viewer is WebtoonViewer) {
+                for (i in 0 until viewer.recycler.childCount) {
+                    val h = viewer.recycler.getChildViewHolder(
+                        viewer.recycler.getChildAt(i),
+                    ) as? WebtoonPageHolder
+                    if (h != null && h.hasActiveOcrBlock) {
+                        h.dismissActiveOcrBlock()
+                        break
+                    }
+                }
+            }
         }
 
         // OCR Dictionary Popup

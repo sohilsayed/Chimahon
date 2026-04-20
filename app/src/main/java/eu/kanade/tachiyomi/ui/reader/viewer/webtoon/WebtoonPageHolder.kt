@@ -426,4 +426,16 @@ class WebtoonPageHolder(
     fun isPointOnOcrBlock(x: Float, y: Float): Boolean {
         return frame.isPointOnOcrBlock(x, y)
     }
+
+    /** True if this page currently has an active (highlighted) OCR block. */
+    val hasActiveOcrBlock: Boolean
+        get() = frame.activeOcrBlock != null
+
+    /**
+     * Dismiss the active OCR block on this page, clearing the highlight and closing the popup.
+     * No-op when no block is active.
+     */
+    fun dismissActiveOcrBlock() {
+        frame.dismissActiveOcrBlock()
+    }
 }

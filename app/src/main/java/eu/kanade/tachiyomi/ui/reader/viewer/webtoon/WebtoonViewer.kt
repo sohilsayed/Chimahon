@@ -171,6 +171,17 @@ class WebtoonViewer(
                 }
             }
 
+            // Tap landed outside every OCR block — dismiss whichever visible page still has
+            // an active highlight. At most one can be active, so break on first find.
+            // Return early to consume the tap; navigation should not trigger on a dismiss.
+            for (i in 0 until recycler.childCount) {
+                val h = recycler.getChildViewHolder(recycler.getChildAt(i)) as? WebtoonPageHolder
+                if (h != null && h.hasActiveOcrBlock) {
+                    h.dismissActiveOcrBlock()
+                    return@f
+                }
+            }
+
             val viewPosition = IntArray(2)
             recycler.getLocationOnScreen(viewPosition)
             val viewPositionRelativeToWindow = IntArray(2)
