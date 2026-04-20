@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.GestureDetector
 import android.view.MotionEvent
 import android.view.View
+import android.graphics.BitmapFactory
 import android.webkit.ConsoleMessage
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
@@ -16,6 +17,8 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -55,6 +58,14 @@ fun ReaderWebView(
 
     // Handle continuous mode changes - Reload the chapter to ensure layout engine resets
     LaunchedEffect(continuousMode) {
+        bridge.chapterUrl?.let { url ->
+            bridge.send(WebViewCommand.LoadChapter(url, bridge.progress))
+        }
+    }
+
+    // Handle writing direction changes - Reload the chapter so the layout engine reinitialises
+    // with the correct column orientation (horizontal-tb vs vertical-rl).
+    LaunchedEffect(readerSettings.verticalWriting) {
         bridge.chapterUrl?.let { url ->
             bridge.send(WebViewCommand.LoadChapter(url, bridge.progress))
         }
@@ -118,6 +129,7 @@ fun ReaderWebView(
                     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                         Log.d("ReaderWebView", "onPageStarted: url=$url")
                         visibility = View.INVISIBLE
+                        lastLoadedUrl = null
                     }
 
                     override fun onPageFinished(view: WebView?, url: String?) {
@@ -125,8 +137,16 @@ fun ReaderWebView(
                         injectReader()
                     }
 
+                    override fun onRenderProcessGone(view: WebView?, detail: android.webkit.RenderProcessGoneDetail?): Boolean {
+                        val reason = if (detail?.didCrash() == true) "WebView crashed" else "WebView killed by system (OOM)"
+                        Log.e("ReaderWebView", "onRenderProcessGone: $reason")
+                        post {
+                            onLoadFailed("Renderer died ($reason). Try disabling hardware acceleration or 'Avoid page breaks'.")
+                        }
+                        return true // Crucial: returning true prevents the entire app from crashing.
+                    }
+
                     override fun shouldInterceptRequest(view: WebView?, request: WebResourceRequest?): WebResourceResponse? {
-                        Log.d("ReaderWebView", "shouldInterceptRequest: url=${request?.url}")
                         return super.shouldInterceptRequest(view, request)
                     }
 
@@ -160,7 +180,22 @@ fun ReaderWebView(
             val commands = pendingCommands.toList()
             pendingCommands.clear()
 
-            commands.forEach { command ->
+            val deduped = buildList {
+                var lastLoadChapter: WebViewCommand.LoadChapter? = null
+                for (cmd in commands) {
+                    if (cmd is WebViewCommand.LoadChapter) {
+                        lastLoadChapter = cmd // keep updating — only the latest matters
+                    } else {
+                        // Flush any pending LoadChapter before a non-load command
+                        lastLoadChapter?.let { add(it) }
+                        lastLoadChapter = null
+                        add(cmd)
+                    }
+                }
+                lastLoadChapter?.let { add(it) } // flush trailing LoadChapter
+            }
+
+            deduped.forEach { command ->
                 when (command) {
                     is WebViewCommand.LoadChapter -> {
                         v.pendingProgress = command.progress
@@ -221,6 +256,10 @@ private class ReaderAndroidWebView(
     private var totalMovement = 0f
     var currentUrl: String? = null
     var pendingProgress: Double = 0.0
+
+    internal var lastLoadedUrl: String? = null
+    internal var lastLoadedWidth: Int = -1
+    internal var lastLoadedHeight: Int = -1
 
     private val gestureDetector = GestureDetector(
         context,
@@ -328,6 +367,14 @@ private class ReaderAndroidWebView(
             postDelayed(Runnable { loadChapter(url) }, 100L)
             return
         }
+
+        if (url == lastLoadedUrl && width == lastLoadedWidth && height == lastLoadedHeight) {
+            Log.d("ReaderWebView", "loadChapter skipped: duplicate load for same url+dimensions")
+            return
+        }
+        lastLoadedUrl = url
+        lastLoadedWidth = width
+        lastLoadedHeight = height
 
         try {
             visibility = View.INVISIBLE
@@ -506,7 +553,8 @@ private class ReaderAndroidWebView(
 
             img { max-width: 100%; height: auto; }
             svg { max-width: 100%; height: auto; }
-            p { break-inside: avoid; }
+
+            body * { font-family: inherit !important; }
         """.trimIndent()
 
         val script = when {
@@ -540,6 +588,16 @@ private class ReaderAndroidWebView(
                 nvp.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
                 document.head.appendChild(nvp);
 
+                // Provide handleTap for navigation/UI toggle in image-only mode
+                window.hoshiReader = {
+                    handleTap: function(clientX, clientY) {
+                        if (window.HoshiAndroid && window.HoshiAndroid.onBackgroundTap) {
+                            window.HoshiAndroid.onBackgroundTap(clientX, clientY);
+                        }
+                        return false;
+                    }
+                };
+
                 var w = window.innerWidth || screen.availWidth || screen.width;
                 var h = window.innerHeight || screen.availHeight || screen.height;
 
@@ -548,6 +606,13 @@ private class ReaderAndroidWebView(
                     'margin:0!important;padding:0!important;' +
                     'width:' + w + 'px!important;height:' + h + 'px!important;' +
                     'overflow:hidden!important;background:$bg!important;';
+
+                if (!document.body) {
+                    console.error('[hoshi] document.body is null in buildImageOnlyScript!');
+                    if (window.HoshiAndroid) window.HoshiAndroid.restoreCompleted();
+                    return;
+                }
+
                 document.body.style.cssText =
                     'margin:0!important;padding:0!important;' +
                     'width:' + w + 'px!important;height:' + h + 'px!important;' +
@@ -567,7 +632,9 @@ private class ReaderAndroidWebView(
                     // Ensure all parents span the full viewport
                     var curr = target.parentElement;
                     while (curr && curr !== document.body) {
-                        curr.style.setProperty('display', 'block', 'important');
+                        curr.style.setProperty('display', 'flex', 'important');
+                        curr.style.setProperty('align-items', 'center', 'important');
+                        curr.style.setProperty('justify-content', 'center', 'important');
                         curr.style.setProperty('margin', '0', 'important');
                         curr.style.setProperty('padding', '0', 'important');
                         curr.style.setProperty('width', w + 'px', 'important');
@@ -578,19 +645,11 @@ private class ReaderAndroidWebView(
 
                     if (target.tagName.toLowerCase() === 'svg') {
                         // SVG: set preserveAspectRatio so it scales to fit, not fill.
-                        // object-fit has no effect on inline SVG; this attribute does.
                         target.setAttribute('preserveAspectRatio', 'xMidYMid meet');
                         target.style.cssText =
                             'width:' + w + 'px!important;height:' + h + 'px!important;' +
                             'max-width:' + w + 'px!important;max-height:' + h + 'px!important;' +
                             'display:block!important;margin:auto!important;padding:0!important;';
-                        // Also fix any inner <image> element that may have hardcoded dimensions
-                        var innerImg = target.querySelector('image');
-                        if (innerImg) {
-                            innerImg.setAttribute('width', '100%');
-                            innerImg.setAttribute('height', '100%');
-                            innerImg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-                        }
                         // SVGs render synchronously — notify immediately
                         notifyReady();
                     } else {
@@ -647,7 +706,9 @@ private class ReaderAndroidWebView(
                 if (s) s.remove();
                 s = document.createElement('style');
                 s.id = 'hoshi-style';
-                s.textContent = ${jsString(css)};
+                var imgMaxH = Math.round(ih * 0.85);
+                var imgMaxW = Math.round(iw * 0.90);
+                s.textContent = ${jsString(css)} + '\nimg, svg { max-width: ' + imgMaxW + 'px !important; max-height: ' + imgMaxH + 'px !important; object-fit: contain !important; }';
                 document.head.appendChild(s);
 
                 $readerJs
@@ -783,7 +844,9 @@ private class ReaderAndroidWebView(
                 if (s) s.remove();
                 s = document.createElement('style');
                 s.id = 'hoshi-style';
-                s.textContent = ${jsString(css)};
+                var imgMaxH = Math.round(ih * 0.85);
+                var imgMaxW = Math.round(iw * 0.90);
+                s.textContent = ${jsString(css)} + '\nimg, svg { max-width: ' + imgMaxW + 'px !important; max-height: ' + imgMaxH + 'px !important; object-fit: contain !important; }';
                 document.head.appendChild(s);
 
                 $readerJs
