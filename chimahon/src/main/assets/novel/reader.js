@@ -1,5 +1,7 @@
 window.hoshiReader = {
     isRtl: false,
+    _charCount: null,
+    _characterIndex: null,
     paginate: function(direction) {
         var el = document.scrollingElement || document.documentElement;
         var ph = window.innerHeight;
@@ -57,6 +59,12 @@ window.hoshiReader = {
     },
 
     calculateProgress: function() {
+        var explored = this.getExploredCharCount();
+        var total = this.getTotalCharCount();
+        if (total > 0 && explored >= 0) {
+            return Math.min(1, Math.max(0, explored / total));
+        }
+
         var el = document.scrollingElement || document.documentElement;
         var ph = window.innerHeight;
         var pw = window.innerWidth;
@@ -94,6 +102,116 @@ window.hoshiReader = {
         }
 
         this.notifyRestoreComplete();
+    },
+
+    getTotalCharCount: function() {
+        return this.ensureCharacterIndex().total;
+    },
+
+    getExploredCharCount: function() {
+        var range = this.getReadingRange();
+        if (!range) return -1;
+        return this.getCharacterCountToRange(range);
+    },
+
+    getReadingRange: function() {
+        var candidates = this.getReadingPointCandidates();
+
+        for (var i = 0; i < candidates.length; i += 1) {
+            var point = candidates[i];
+            var range = this.getCaretRange(point[0], point[1]);
+            if (range && range.startContainer && range.startContainer.nodeType === Node.TEXT_NODE) {
+                return range;
+            }
+        }
+
+        return null;
+    },
+
+    getReadingPointCandidates: function() {
+        var vw = this.isVerticalWriting();
+        var w = window.innerWidth;
+        var h = window.innerHeight;
+
+        if (vw) {
+            return [
+                [Math.max(1, w - 12), 12],
+                [Math.max(1, w - 24), 24],
+                [Math.max(1, w - 40), Math.min(64, Math.max(12, h * 0.2))]
+            ];
+        }
+
+        return [
+            [12, 12],
+            [24, 24],
+            [Math.min(64, Math.max(12, w * 0.2)), Math.min(64, Math.max(12, h * 0.15))]
+        ];
+    },
+
+    getCharacterCountToRange: function(range) {
+        if (!range || !range.startContainer) return -1;
+
+        var index = this.ensureCharacterIndex();
+        var count = index.offsets.get(range.startContainer);
+        if (typeof count !== 'number') {
+            return -1;
+        }
+
+        return count + this.countCharacters(range.startContainer.textContent.slice(0, range.startOffset));
+    },
+
+    ensureCharacterIndex: function() {
+        if (this._characterIndex) {
+            return this._characterIndex;
+        }
+
+        var walker = this.createWalker(document.body);
+        var offsets = new WeakMap();
+        var total = 0;
+        var node;
+
+        while ((node = walker.nextNode())) {
+            offsets.set(node, total);
+            total += this.getCharacterCount(node);
+        }
+
+        this._charCount = total;
+        this._characterIndex = {
+            total: total,
+            offsets: offsets
+        };
+        return this._characterIndex;
+    },
+
+    countCharactersInNode: function(rootNode) {
+        if (!rootNode || rootNode === document.body) {
+            return this.ensureCharacterIndex().total;
+        }
+
+        var walker = this.createWalker(rootNode);
+        var count = 0;
+        var node;
+
+        while ((node = walker.nextNode())) {
+            count += this.getCharacterCount(node);
+        }
+
+        return count;
+    },
+
+    getCharacterCount: function(node) {
+        if (!node || !node.textContent) return 0;
+        var filtered = node.textContent.replace(/[^0-9A-Za-z\u3040-\u30FF\u3400-\u4DBF\u4E00-\u9FFF]+/g, '');
+        return this.countCharacters(filtered);
+    },
+
+    countCharacters: function(text) {
+        return Array.from(text || '').length;
+    },
+
+    isVerticalWriting: function() {
+        var mode = window.getComputedStyle(document.body).writingMode || document.body.style.writingMode || '';
+        return mode.indexOf('vertical') === 0;
     },
 
     notifyRestoreComplete: function() {
@@ -138,7 +256,16 @@ window.hoshiReader = {
     createWalker: function(rootNode) {
         const root = rootNode || document.body;
         return document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-            acceptNode: (n) => this.isFurigana(n) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT
+            acceptNode: (n) => {
+                if (this.isFurigana(n)) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                const el = n.parentElement;
+                if (el && el.closest('[aria-hidden], [hidden]')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                return NodeFilter.FILTER_ACCEPT;
+            }
         });
     },
 

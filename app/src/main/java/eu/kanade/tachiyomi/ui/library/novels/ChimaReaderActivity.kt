@@ -15,19 +15,22 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import chimahon.DictionaryRepository
+import com.canopus.chimareader.data.BookMetadata
+import com.canopus.chimareader.data.Statistics
 import com.canopus.chimareader.ui.reader.NovelReaderActivity
+import eu.kanade.domain.sync.SyncPreferences
 import eu.kanade.tachiyomi.ui.reader.viewer.OcrLookupPopup
 import java.io.File
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import logcat.LogPriority
 import eu.kanade.tachiyomi.data.sync.ttsu.TtsuSyncManager
-import com.canopus.chimareader.data.Statistics
 import tachiyomi.core.common.util.system.logcat
 import kotlinx.coroutines.withContext
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 /**
  * App-side subclass of [NovelReaderActivity] that wires text-selection events
@@ -39,6 +42,8 @@ import kotlinx.coroutines.withContext
  * automatically lands here without any chimahon → app module import.
  */
 class ChimaReaderActivity : NovelReaderActivity() {
+    private val syncPreferences: SyncPreferences by lazy { Injekt.get() }
+    private val syncManager by lazy { TtsuSyncManager(this@ChimaReaderActivity) }
 
     /**
      * Backing state for the lookup popup. Using Activity-level `mutableStateOf`
@@ -65,41 +70,66 @@ class ChimaReaderActivity : NovelReaderActivity() {
         isPopupActive = true
     }
 
+    override suspend fun prepareBookBeforeOpen(book: BookMetadata) {
+        if (!shouldPullOnOpen()) return
+
+        val changed = syncManager.pullBookFromCloud(book)
+        if (changed) {
+            logcat(LogPriority.INFO, tag = "TTSU-SYNC") {
+                "Pulled newer TTU/Hoshi progress/statistics for '${book.title ?: book.id}' before reader open"
+            }
+        }
+    }
+
+    override fun getPeriodicSyncIntervalMinutes(): Int {
+        return if (isTtsuSyncEnabled()) {
+            syncPreferences.ttuPeriodicSyncInterval().get()
+        } else {
+            0
+        }
+    }
+
     /** Called by [NovelReaderActivity] when the reader is closed/disposed. */
     override fun onReaderClosed(bookTitle: String, progress: Double, charsRead: Int, timestamp: Long, statistics: List<Statistics>) {
-        syncToGoogleDrive(bookTitle, progress, charsRead, timestamp, statistics)
+        if (syncPreferences.ttuSyncOnClose().get()) {
+            syncToGoogleDrive(bookTitle, progress, charsRead, timestamp, statistics)
+        }
     }
 
     /** Called by [NovelReaderActivity] periodically while reading. */
     override fun onPeriodicSync(bookTitle: String, progress: Double, charsRead: Int, timestamp: Long, statistics: List<Statistics>) {
+        if (!isTtsuSyncEnabled()) return
         syncToGoogleDrive(bookTitle, progress, charsRead, timestamp, statistics)
     }
 
     private fun syncToGoogleDrive(bookTitle: String, progress: Double, charsRead: Int, timestamp: Long, statistics: List<Statistics>) {
-        val syncManager = TtsuSyncManager(this)
-        // Use GlobalScope + NonCancellable to ensure sync completes even if activity is destroyed
-        @Suppress("OPT_IN_USAGE")
-        GlobalScope.launch(Dispatchers.IO) {
+        if (!isTtsuSyncEnabled()) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
             withContext(NonCancellable) {
                 logcat(LogPriority.DEBUG, tag = "TTSU-SYNC") { "Starting sync for $bookTitle..." }
-                
-                val progressResult = syncManager.pushProgressToGoogleDrive(
+
+                val changed = this@ChimaReaderActivity.syncManager.pushBookData(
                     bookTitle = bookTitle,
                     exploredCharCount = charsRead,
                     progress = progress,
-                    lastModified = timestamp
+                    lastModified = timestamp,
+                    statistics = statistics,
                 )
-                logcat(LogPriority.DEBUG, tag = "TTSU-SYNC") { "Progress sync result: $progressResult" }
 
-                val statsResult = syncManager.pushStatisticsToGoogleDrive(
-                    bookTitle = bookTitle,
-                    statistics = statistics
-                )
-                logcat(LogPriority.DEBUG, tag = "TTSU-SYNC") { "Statistics sync result: $statsResult" }
-                
-                logcat(LogPriority.INFO, tag = "TTSU-SYNC") { "Finished sync for $bookTitle." }
+                logcat(LogPriority.INFO, tag = "TTSU-SYNC") { "Finished sync for $bookTitle. Changed=$changed" }
             }
         }
+    }
+
+    private fun isTtsuSyncEnabled(): Boolean {
+        return syncPreferences.ttuSyncEnabled().get() &&
+            syncPreferences.ttuAccessToken().get().isNotBlank() &&
+            syncPreferences.ttuRefreshToken().get().isNotBlank()
+    }
+
+    private fun shouldPullOnOpen(): Boolean {
+        return isTtsuSyncEnabled() && syncPreferences.ttuSyncOnOpen().get()
     }
 
     /**

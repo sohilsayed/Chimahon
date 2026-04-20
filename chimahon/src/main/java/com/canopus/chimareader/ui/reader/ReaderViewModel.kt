@@ -172,6 +172,7 @@ class ReaderViewModel(
     var lastSavedExploredCharCount = 0 // Made internal for UI calculation
     var lastSavedSessionReadingTime = 0.0 // Made internal for UI calculation
     private var lastPeriodicSaveTime = System.currentTimeMillis()
+    private var lastSavedBookmarkFingerprint: Pair<Int, Long>? = null
 
     val todayCharactersRead: Int
         get() {
@@ -235,6 +236,7 @@ class ReaderViewModel(
         val bookmark = BookStorage.loadBookmark(rootUrl)
         index = bookmark?.chapterIndex ?: 0
         currentProgress = bookmark?.progress ?: 0.0
+        lastSavedBookmarkFingerprint = bookmarkFingerprint(index, currentProgress)
         
         totalExploredCharCount = calculateExploredCharCount(currentProgress)
         initialCharCount = totalExploredCharCount
@@ -375,7 +377,7 @@ class ReaderViewModel(
             horizontalPadding = horizontalPadding,
             verticalPadding = verticalPadding,
             selectedFont = selectedFont,
-            fontUrl = fontUrl?.toString(),
+            fontUrl = fontUrl,
             theme = theme.name.lowercase(),
             backgroundColor = bg,
             textColor = txt,
@@ -421,11 +423,18 @@ class ReaderViewModel(
         return null
     }
 
-    fun saveBookmark(progress: Double) {
+    fun saveBookmark(progress: Double, forceStatisticsSave: Boolean = false) {
+        val bookmarkFingerprint = bookmarkFingerprint(index, progress)
         currentProgress = progress
         bridge.updateProgress(progress)
+
+        if (!forceStatisticsSave && lastSavedBookmarkFingerprint == bookmarkFingerprint) {
+            return
+        }
+
         persistBookmark(progress)
         savePersistentStatistics()
+        lastSavedBookmarkFingerprint = bookmarkFingerprint
     }
 
     fun nextChapter(): Boolean {
@@ -482,6 +491,10 @@ class ReaderViewModel(
             rootUrl,
             FileNames.bookmark
         )
+    }
+
+    private fun bookmarkFingerprint(index: Int, progress: Double): Pair<Int, Long> {
+        return index to progress.toBits()
     }
 
     private fun savePersistentStatistics() {

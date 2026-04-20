@@ -38,7 +38,8 @@ fun ReaderScreen(
     onLookupRequested: (String, String, Float, Float) -> Unit = { _, _, _, _ -> },
     onDisposeReader: (String, Double, Int, Long, List<Statistics>) -> Unit = { _, _, _, _, _ -> },
     onPeriodicSync: (String, Double, Int, Long, List<Statistics>) -> Unit = { _, _, _, _, _ -> },
-    isPopupActive: Boolean = false
+    isPopupActive: Boolean = false,
+    periodicSyncIntervalMinutes: Int = 0,
 ) {
     val context = LocalContext.current
 
@@ -72,12 +73,12 @@ fun ReaderScreen(
         }
     }
 
-    // Periodic sync back to cloud (e.g. every 10 minutes)
-    LaunchedEffect(loadState) {
+    LaunchedEffect(loadState, periodicSyncIntervalMinutes) {
+        if (periodicSyncIntervalMinutes <= 0) return@LaunchedEffect
         val readyState = loadState as? ReaderLoadState.Ready ?: return@LaunchedEffect
         val vm = readyState.viewModel
         while (true) {
-            kotlinx.coroutines.delay(10 * 60 * 1000)
+            kotlinx.coroutines.delay(periodicSyncIntervalMinutes * 60 * 1000L)
             val title = book.title ?: book.id
             onPeriodicSync(
                 title,
@@ -149,7 +150,7 @@ fun ReaderScreen(
                 
                 DisposableEffect(Unit) {
                     onDispose {
-                        viewModel.saveBookmark(viewModel.currentProgress)
+                        viewModel.saveBookmark(viewModel.currentProgress, forceStatisticsSave = true)
                         onDisposeReader(
                             viewModel.document.title ?: "Unknown",
                             viewModel.currentProgress,
@@ -162,7 +163,7 @@ fun ReaderScreen(
 
                 // Function to handle manual sync
                 val performManualSync = {
-                    viewModel.saveBookmark(viewModel.currentProgress)
+                    viewModel.saveBookmark(viewModel.currentProgress, forceStatisticsSave = true)
                     onPeriodicSync(
                         book.title ?: book.id,
                         viewModel.currentProgress,
@@ -202,7 +203,7 @@ fun ReaderScreen(
                     swipeThreshold = chapterSwipeDistance,
                     tapZonePx = tapZonePx,
                     isPopupActive = isPopupActive,
-                    onTextSelected = { word, sentence, x, y -> onLookupRequested?.invoke(word, sentence, x, y) },
+                    onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
                 )
 
                 // Top HUD - always visible when showHud is true
@@ -333,7 +334,7 @@ private fun ReaderBottomBar(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconButton(onClick = onOpenChapters) {
                 Icon(
-                    Icons.Default.List, 
+                    Icons.AutoMirrored.Filled.List,
                     contentDescription = "Chapters",
                     tint = Color(contentColor)
                 )
