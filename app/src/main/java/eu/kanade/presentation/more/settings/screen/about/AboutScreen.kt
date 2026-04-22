@@ -285,7 +285,7 @@ class AboutScreen : Screen() {
                         LinkIcon(
                             label = "GitHub",
                             icon = CustomIcons.Github,
-                            url = "https://github.com/chimahon",
+                            url = "https://github.com/sohilsayed/chimahon",
                         )
                     }
                 }
