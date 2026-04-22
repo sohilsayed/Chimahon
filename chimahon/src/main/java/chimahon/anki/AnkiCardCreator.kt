@@ -49,6 +49,7 @@ object Marker {
     const val GLOSSARY_FIRST = "glossary-first"
     const val GLOSSARY_FIRST_BRIEF = "glossary-first-brief"
     const val SENTENCE = "sentence"
+    const val SENTENCE_BOLD = "sentence-bold"
     const val CLOZE_PREFIX = "cloze-prefix"
     const val CLOZE_BODY = "cloze-body"
     const val CLOZE_BODY_KANA = "cloze-body-kana"
@@ -59,6 +60,7 @@ object Marker {
     const val DICTIONARY = "dictionary"
     const val DICTIONARY_ALIAS = "dictionary-alias"
     const val FREQUENCIES = "frequencies"
+    const val FREQUENCY_LOWEST = "frequency-lowest"
     const val FREQUENCY_HARMONIC_RANK = "frequency-harmonic-rank"
     const val FREQUENCY_AVERAGE_RANK = "frequency-average-rank"
     const val PITCH_ACCENTS = "pitch-accents"
@@ -75,21 +77,30 @@ object Marker {
     const val SINGLE_GLOSSARY = "single-glossary"
     const val MORAE = "morae"
     const val PITCH_ACCENT_GRAPHS = "pitch-accent-graphs"
+    const val PITCH_ACCENT_COMPOSITE = "pitch-accent-composite"
+    const val SENTENCE_FURIGANA = "sentence-furigana"
+    const val SENTENCE_FURIGANA_PLAIN = "sentence-furigana-plain"
+    const val SENTENCE_TRANSLATION = "sentence-translation"
+    const val WORD_AUDIO = "word-audio"
+    const val SENTENCE_AUDIO = "sentence-audio"
+    const val SELECTION_TEXT = "selection-text"
+    const val MISC_INFO = "misc-info"
 
     val ALL: List<String> = listOf(
         EXPRESSION, READING, FURIGANA, FURIGANA_PLAIN,
         GLOSSARY, GLOSSARY_BRIEF, GLOSSARY_PLAIN, GLOSSARY_NO_DICT,
         GLOSSARY_FIRST, GLOSSARY_FIRST_BRIEF,
-        SENTENCE, CLOZE_PREFIX, CLOZE_BODY, CLOZE_BODY_KANA, CLOZE_SUFFIX,
+        SENTENCE, SENTENCE_BOLD, CLOZE_PREFIX, CLOZE_BODY, CLOZE_BODY_KANA, CLOZE_SUFFIX,
         TAGS, PART_OF_SPEECH, CONJUGATION,
         DICTIONARY, DICTIONARY_ALIAS,
-        FREQUENCIES, FREQUENCY_HARMONIC_RANK, FREQUENCY_AVERAGE_RANK,
+        FREQUENCIES, FREQUENCY_LOWEST, FREQUENCY_HARMONIC_RANK, FREQUENCY_AVERAGE_RANK,
         PITCH_ACCENTS, PITCH_ACCENT_POSITIONS, PITCH_ACCENT_CATEGORIES,
-        PITCH_ACCENT_GRAPHS, MORAE,
+        PITCH_ACCENT_GRAPHS, PITCH_ACCENT_COMPOSITE, MORAE,
         MANGA, CHAPTER, MEDIA,
         SINGLE_GLOSSARY,
         SCREENSHOT, SEARCH_QUERY,
         URL, DOCUMENT_TITLE,
+        SENTENCE_FURIGANA, SENTENCE_FURIGANA_PLAIN,
     )
 
     val ALL_WITH_TODO: List<String> = ALL + listOf(AUDIO)
@@ -112,8 +123,9 @@ object Marker {
         CLOZE_PREFIX to listOf("cloze-prefix"),
         CLOZE_SUFFIX to listOf("cloze-suffix"),
         FREQUENCIES to listOf("frequencies", "freq", "frequency-list"),
-        FREQUENCY_HARMONIC_RANK to listOf("freq-rank", "frequency-rank"),
+        FREQUENCY_HARMONIC_RANK to listOf("freq-rank", "frequency-rank", "freqSort"),
         FREQUENCY_AVERAGE_RANK to listOf("freq-avg", "frequency-average"),
+        SENTENCE_TRANSLATION to listOf("sentence-translation", "sentenceTranslation", "meaning-eng"),
         SEARCH_QUERY to listOf("search-query", "query"),
         SCREENSHOT to listOf("screenshot"),
         TAGS to listOf("tags", "tag"),
@@ -436,6 +448,7 @@ object AnkiCardCreator {
         )
         Marker.GLOSSARY_PLAIN -> buildGlossaryPlain(result.term.glossaries, noDictTag = false)
         Marker.SENTENCE -> cloze?.let { escapeHtml(it.sentence) } ?: ""
+        Marker.SENTENCE_BOLD -> cloze?.let { "${escapeHtml(it.prefix)}<b>${escapeHtml(it.body)}</b>${escapeHtml(it.suffix)}" } ?: ""
         Marker.CLOZE_PREFIX -> cloze?.let { escapeHtml(it.prefix) } ?: ""
         Marker.CLOZE_BODY -> cloze?.let { escapeHtml(it.body) } ?: ""
         Marker.CLOZE_BODY_KANA -> cloze?.let { escapeHtml(it.bodyKana) } ?: ""
@@ -446,18 +459,27 @@ object AnkiCardCreator {
         Marker.DICTIONARY -> result.term.glossaries.firstOrNull()?.let { escapeHtml(it.dictName) } ?: ""
         Marker.DICTIONARY_ALIAS -> result.term.glossaries.firstOrNull()?.let { escapeHtml(it.dictName) } ?: ""
         Marker.FREQUENCIES -> buildFrequenciesList(result)
+        Marker.FREQUENCY_LOWEST -> selectLowestFrequencyValue(result) ?: ""
         Marker.FREQUENCY_HARMONIC_RANK -> buildFrequencyHarmonicRank(result)
         Marker.FREQUENCY_AVERAGE_RANK -> buildFrequencyAverageRank(result)
-        Marker.PITCH_ACCENTS -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.COMPOSITE)
+        Marker.PITCH_ACCENTS -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.SVG)
         Marker.PITCH_ACCENT_POSITIONS -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.POSITION)
         Marker.PITCH_ACCENT_CATEGORIES -> buildPitchCategories(result.term.reading, result.term.pitches)
+        Marker.PITCH_ACCENT_COMPOSITE -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.COMPOSITE)
         Marker.AUDIO -> ""
+        Marker.WORD_AUDIO -> ""
+        Marker.SENTENCE_AUDIO -> ""
         Marker.MORAE -> buildMorae(result.term.reading)
         Marker.PITCH_ACCENT_GRAPHS -> buildPitchAccentGraphs(result.term.reading, result.term.pitches)
         Marker.SCREENSHOT -> screenshotFilename?.let { "<img src=\"$it\">" } ?: ""
         Marker.SEARCH_QUERY -> escapeHtml(result.term.expression)
-        Marker.URL -> "" // TODO: Add to LookupResult
-        Marker.DOCUMENT_TITLE -> "" // TODO: Add to LookupResult
+        Marker.URL -> ""
+        Marker.DOCUMENT_TITLE -> ""
+        Marker.SENTENCE_FURIGANA -> cloze?.let { "${escapeHtml(it.prefix)}${buildFuriganaHtml(it.body, it.bodyKana)}${escapeHtml(it.suffix)}" } ?: ""
+        Marker.SENTENCE_FURIGANA_PLAIN -> cloze?.let { "${it.prefix}${buildFuriganaPlain(it.body, it.bodyKana)}${it.suffix}" } ?: ""
+        Marker.SENTENCE_TRANSLATION -> ""
+        Marker.SELECTION_TEXT -> ""
+        Marker.MISC_INFO -> ""
         Marker.MANGA -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
         Marker.CHAPTER -> media?.chapterName?.let { escapeHtml(it) } ?: ""
         Marker.MEDIA -> {
@@ -484,6 +506,7 @@ object AnkiCardCreator {
         val tokens = rest.split("-").toMutableList()
         var hasBrief = false
         var hasFirst = false
+        var hasPlain = false
         while (tokens.isNotEmpty()) {
             when (tokens.last().lowercase()) {
                 "brief" -> {
@@ -494,12 +517,22 @@ object AnkiCardCreator {
                     hasFirst = true
                     tokens.removeAt(tokens.lastIndex)
                 }
+                "plain" -> {
+                    hasPlain = true
+                    tokens.removeAt(tokens.lastIndex)
+                }
                 else -> break
             }
         }
 
         val dictName = tokens.joinToString("-").trim()
         if (dictName.isEmpty()) return ""
+
+        if (hasPlain) {
+            val filtered = result.term.glossaries.filter { it.dictName.contains(dictName, ignoreCase = true) }.toTypedArray()
+            val entries = if (hasFirst) filtered.take(1).toTypedArray() else filtered
+            return buildGlossaryPlain(entries, noDictTag = false)
+        }
 
         return buildGlossary(
             result.term.glossaries,
@@ -620,7 +653,10 @@ object AnkiCardCreator {
         sb.append("""<div style="text-align: left;" class="yomitan-glossary">""")
 
         if (entries.size == 1) {
+            val dictAttr = attrEscape(entries[0].dictName)
+            sb.append("""<div data-dictionary="$dictAttr">""")
             sb.append(renderGlossarySingle(entries[0], brief, noDictTag))
+            sb.append("</div>")
         } else {
             sb.append("<ol>")
             for (entry in entries) {
@@ -906,7 +942,19 @@ object AnkiCardCreator {
     // =============================================================================
 
     private fun buildFrequenciesList(result: LookupResult): String {
-        return selectLowestFrequencyValue(result) ?: ""
+        if (result.term.frequencies.isEmpty()) return ""
+        val sb = StringBuilder()
+        sb.append("<ul data-content=\"frequencies\">")
+        for (group in result.term.frequencies) {
+            val dictAttr = attrEscape(group.dictName)
+            for (freq in group.frequencies) {
+                if (freq.value <= 0) continue
+                val display = freq.displayValue.takeIf { it.isNotBlank() } ?: freq.value.toString()
+                sb.append("<li data-dictionary=\"$dictAttr\">${escapeHtml(display)}</li>")
+            }
+        }
+        sb.append("</ul>")
+        return sb.toString()
     }
 
     private fun selectLowestFrequencyValue(result: LookupResult): String? {
@@ -1077,11 +1125,15 @@ object AnkiCardCreator {
     // =============================================================================
 
     internal fun escapeHtml(text: String): String = text
+        .replace("\u001F", "")
+        .replace("\u0000", "")
         .replace("&", "&amp;")
         .replace("<", "&lt;")
         .replace(">", "&gt;")
 
     private fun attrEscape(text: String): String = text
+        .replace("\u001F", "")
+        .replace("\u0000", "")
         .replace("&", "&amp;")
         .replace("\"", "&quot;")
 

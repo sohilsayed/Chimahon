@@ -122,6 +122,7 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.DICTIONARY -> "${prefix}Dictionary"
         Marker.DICTIONARY_ALIAS -> "${prefix}Dictionary Alias"
         Marker.FREQUENCIES -> "${prefix}Frequencies"
+        Marker.FREQUENCY_LOWEST -> "${prefix}Freq Lowest"
         Marker.FREQUENCY_HARMONIC_RANK -> "${prefix}Freq Harmonic"
         Marker.FREQUENCY_AVERAGE_RANK -> "${prefix}Freq Average"
         Marker.PITCH_ACCENTS -> "${prefix}Pitch Accents"
@@ -136,6 +137,9 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.CHAPTER -> "${prefix}Chapter"
         Marker.MEDIA -> "${prefix}Media"
         Marker.SINGLE_GLOSSARY -> "${prefix}Single Glossary ▸"
+        Marker.PITCH_ACCENT_COMPOSITE -> "${prefix}Pitch Composite"
+        Marker.SENTENCE_FURIGANA -> "${prefix}Sentence Furigana"
+        Marker.SENTENCE_FURIGANA_PLAIN -> "${prefix}Sentence Furigana Plain"
         else -> marker
     }
 }
