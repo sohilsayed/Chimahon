@@ -196,8 +196,8 @@ object SettingsDictionaryScreen : SearchableSettings {
         val heightPref = dictionaryPreferences.popupHeight()
         val height by heightPref.collectAsState()
 
-        val scalePref = dictionaryPreferences.popupScale()
-        val scale by scalePref.collectAsState()
+        val fontSizePref = dictionaryPreferences.fontSize()
+        val fontSize by fontSizePref.collectAsState()
 
         val ocrBoxScalePref = dictionaryPreferences.ocrBoxScale()
         val ocrBoxScale by ocrBoxScalePref.collectAsState()
@@ -230,12 +230,12 @@ object SettingsDictionaryScreen : SearchableSettings {
                     },
                 ),
                 Preference.PreferenceItem.SliderPreference(
-                    value = scale,
-                    title = stringResource(MR.strings.pref_dict_popup_scale),
-                    subtitle = "$scale%",
-                    valueRange = 50..200,
+                    value = fontSize,
+                    title = stringResource(MR.strings.pref_dict_popup_font_size),
+                    subtitle = "${fontSize}px",
+                    valueRange = 8..48,
                     onValueChanged = { newValue ->
-                        scalePref.set(newValue)
+                        fontSizePref.set(newValue)
                     },
                 ),
                 Preference.PreferenceItem.SliderPreference(

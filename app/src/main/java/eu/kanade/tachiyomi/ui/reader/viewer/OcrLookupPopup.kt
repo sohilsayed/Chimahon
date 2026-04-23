@@ -109,7 +109,7 @@ fun OcrLookupPopup(
     val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
     val popupWidthPref by dictionaryPreferences.popupWidth().collectAsState()
     val popupHeightPref by dictionaryPreferences.popupHeight().collectAsState()
-    val popupScalePref by dictionaryPreferences.popupScale().collectAsState()
+    val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
     val rawProfiles by dictionaryPreferences.rawProfiles().collectAsState()
     val rawActiveProfileId by dictionaryPreferences.rawActiveProfileId().collectAsState()
     val profileStore = dictionaryPreferences.profileStore
@@ -132,7 +132,21 @@ fun OcrLookupPopup(
     val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
 
     /** Perform a dictionary lookup and push a new frame onto the stack. */
-    fun pushLookup(query: String) {
+    fun pushLookup(query: String, isRecursive: Boolean = false) {
+        val cleanQuery = if (isRecursive) {
+            query.replace(Regex("[\\s\\p{Punct}「」『』【】（）〔〕［］｛｝〈〉《》…、。！？!?]+"), "").trim()
+        } else {
+            query.trim()
+        }
+
+        if (isRecursive) {
+            if (cleanQuery.isBlank()) return
+            // Ignore if entirely ascii/english letters and numbers
+            if (cleanQuery.all { it.code <= 127 }) return
+        }
+
+        val finalQuery = if (isRecursive) cleanQuery else query
+
         scope.launch {
             isLoading = true
             errorMessage = null
@@ -141,8 +155,14 @@ fun OcrLookupPopup(
                     getDictionaryPaths(context, activeProfile)
                 }
                 val result = withContext(Dispatchers.IO) {
-                    repository.lookup(query, termPaths)
+                    repository.lookup(finalQuery, termPaths)
                 }
+
+                if (isRecursive && result.results.isEmpty()) {
+                    isLoading = false
+                    return@launch
+                }
+
                 var existing: Set<String> = emptySet()
                 if (ankiEnabled && result.results.isNotEmpty()) {
                     val unique = result.results.map { it.term.expression }.distinct()
@@ -156,7 +176,7 @@ fun OcrLookupPopup(
                     }
                 }
                 val frame = LookupFrame(
-                    query = query,
+                    query = finalQuery,
                     results = result.results,
                     styles = result.styles,
                     mediaDataUris = result.mediaDataUris,
@@ -334,7 +354,7 @@ fun OcrLookupPopup(
     }
 
     // Callbacks forwarded from the WebView bridge
-    val onRecursiveLookup: (String) -> Unit = { word -> pushLookup(word) }
+    val onRecursiveLookup: (String) -> Unit = { word -> pushLookup(word, isRecursive = true) }
     val onTabSelect: (Int) -> Unit = { idx ->
         if (idx in lookupStack.indices) activeTabIndex = idx
     }
@@ -381,7 +401,7 @@ fun OcrLookupPopup(
                         mediaDataUris = mediaDataUris,
                         placeholder = "",
                         headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
-                        popupScale = popupScalePref,
+                        fontSize = popupFontSizePref,
                         showFrequencyHarmonic = showFreqHarmonic,
                         groupTerms = groupTerms,
                         showPitchDiagram = showPitchDiagram,

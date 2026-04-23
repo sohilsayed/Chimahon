@@ -194,7 +194,7 @@ data object DictionaryTab : Tab {
         val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
         val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
         val recursiveNavMode by dictionaryPreferences.recursiveLookupMode().collectAsState()
-
+        val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
         // ── Lookup history stack ──────────────────────────────────────────────
         val lookupStack = remember { mutableStateListOf<TabLookupFrame>() }
         var activeTabIndex by remember { mutableIntStateOf(0) }
@@ -444,6 +444,7 @@ data object DictionaryTab : Tab {
                     existingExpressions = existingExpressions,
                     tabs = buildTabs(),
                     recursiveNavMode = recursiveNavMode,
+                    fontSize = popupFontSizePref,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },

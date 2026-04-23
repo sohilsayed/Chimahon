@@ -48,7 +48,7 @@ fun DictionaryEntryWebView(
     mediaDataUris: Map<String, String>,
     placeholder: String,
     headerText: String = "",
-    popupScale: Int = 100,
+    fontSize: Int = 16,
     showFrequencyHarmonic: Boolean = false,
     groupTerms: Boolean = true,
     activeProfile: chimahon.anki.AnkiProfile,
@@ -166,6 +166,13 @@ fun DictionaryEntryWebView(
                                     }
                                 };
                                 window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled(true);
+                                (function(v) {
+                                    v = v + 'px';
+                                    document.documentElement.style.fontSize = v;
+                                    document.body.style.fontSize = v;
+                                    document.documentElement.style.transform = 'none';
+                                    document.documentElement.style.transformOrigin = 'top left';
+                                })('${s.fontSize}');
                                 """.trimIndent(),
                                 null,
                             )
@@ -193,6 +200,7 @@ fun DictionaryEntryWebView(
             state.onRecursiveLookup = onRecursiveLookup
             state.onTabSelect = onTabSelect
             state.onBack = onBack
+            state.fontSize = fontSize
             state.pendingPayload = payload
 
             val theme = if (isDark) "dark" else "light"
@@ -208,10 +216,15 @@ fun DictionaryEntryWebView(
                 null,
             )
 
-            val scale = popupScale / 100f
+            // Set base font size
             webView.evaluateJavascript(
-                "document.documentElement.style.transform = 'scale($scale)';" +
-                    "document.documentElement.style.transformOrigin = 'top left';",
+                "(function(v) {" +
+                    "v = v + 'px';" +
+                    "document.documentElement.style.fontSize = v;" +
+                    "document.body.style.fontSize = v;" +
+                    "document.documentElement.style.transform = 'none';" +
+                    "document.documentElement.style.transformOrigin = 'top left';" +
+                    "})('$fontSize');",
                 null,
             )
 
@@ -255,6 +268,7 @@ private class DictionaryWebViewState(
     val bridge: PayloadBridge = PayloadBridge(),
 ) {
     var pageReady: Boolean = false
+    var fontSize: Int = 16
     var onAnkiLookup: ((Int, Int?) -> Unit)? = null
     var onRecursiveLookup: ((String) -> Unit)? = null
     var onTabSelect: ((Int) -> Unit)? = null

@@ -232,7 +232,7 @@
     <string name="pref_dict_appearance">Appearance</string>
     <string name="pref_dict_popup_width">Popup width</string>
     <string name="pref_dict_popup_height">Popup height</string>
-    <string name="pref_dict_popup_scale">Popup scale</string>
+    <string name="pref_dict_popup_font_size">Popup font size</string>
     <string name="pref_dict_show_frequency_harmonic">Show frequency as harmonic rank</string>
     <string name="pref_dict_show_frequency_harmonic_summary">Display harmonic rank instead of full frequency list in dictionary popup</string>
     <string name="pref_dict_group_terms">Group dictionary definitions</string>
