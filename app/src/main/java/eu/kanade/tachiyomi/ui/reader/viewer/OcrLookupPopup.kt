@@ -130,6 +130,7 @@ fun OcrLookupPopup(
     val showPitchDiagram by dictionaryPreferences.showPitchDiagram().collectAsState()
     val showPitchNumber by dictionaryPreferences.showPitchNumber().collectAsState()
     val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
+    val customCss by dictionaryPreferences.customCss().collectAsState()
 
     /** Perform a dictionary lookup and push a new frame onto the stack. */
     fun pushLookup(query: String, isRecursive: Boolean = false) {
@@ -222,7 +223,7 @@ fun OcrLookupPopup(
         }
     }
 
-    fun performAnkiLookup(index: Int, glossaryIndex: Int?) {
+    fun performAnkiLookup(index: Int, glossaryIndex: Int?, selectedDict: String? = null, popupSelection: String? = null) {
         val result = results.getOrNull(index) ?: return
 
         val shouldUseCropMode = screenshotFieldMapped && cropMode == "crop" && onCropTriggered != null
@@ -243,6 +244,9 @@ fun OcrLookupPopup(
                     offset = charOffset,
                     media = mediaInfo,
                     glossaryIndex = glossaryIndex,
+                    selection = result.matched,
+                    selectedDict = selectedDict,
+                    popupSelection = popupSelection,
                 )
                 if (ankiResult is AnkiResult.Success) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -282,6 +286,9 @@ fun OcrLookupPopup(
                     media = mediaInfo,
                     glossaryIndex = glossaryIndex,
                     screenshotBytes = encoding?.bytes,
+                    selection = result.matched,
+                    selectedDict = selectedDict,
+                    popupSelection = popupSelection,
                 )
                 when (ankiResult) {
                     is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
@@ -297,9 +304,9 @@ fun OcrLookupPopup(
         }
     }
 
-    val onAnkiLookup: ((Int, Int?) -> Unit)? = if (ankiEnabled) {
-        { index, glossaryIndex ->
-            performAnkiLookup(index, glossaryIndex)
+    val onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = if (ankiEnabled) {
+        { index, glossaryIndex, selectedDict, popupSelection ->
+            performAnkiLookup(index, glossaryIndex, selectedDict, popupSelection)
         }
     } else {
         null
@@ -383,7 +390,8 @@ fun OcrLookupPopup(
                     // Consume taps on the popup itself to prevent them from falling through to the reader
                 },
             shape = MaterialTheme.shapes.medium,
-            tonalElevation = 6.dp,
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
             shadowElevation = 6.dp,
         ) {
             when {
@@ -411,6 +419,8 @@ fun OcrLookupPopup(
                         existingExpressions = existingExpressions,
                         tabs = buildTabs(),
                         recursiveNavMode = recursiveNavMode,
+                        customCss = customCss,
+                        wordAudioEnabled = dictionaryPreferences.wordAudioEnabled().collectAsState().value,
                         webViewProvider = { webView },
                         onAnkiLookup = onAnkiLookup,
                         onRecursiveLookup = onRecursiveLookup,

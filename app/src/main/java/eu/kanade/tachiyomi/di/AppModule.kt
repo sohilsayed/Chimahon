@@ -9,6 +9,9 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
+import chimahon.audio.WordAudioService
+import chimahon.audio.WordAudioPreferences
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.domain.track.store.DelayedTrackingStore
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.data.BackupRestoreStatus
@@ -213,6 +216,10 @@ class AppModule(val app: Application) : InjektModule {
             get<GetCustomMangaInfo>()
             // SY <--
         }
+
+        addSingletonFactory { WordAudioService(app) }
+        addSingletonFactory { DictionaryPreferences(get()) }
+        addSingletonFactory<WordAudioPreferences> { get<DictionaryPreferences>() }
 
         addSingletonFactory { GoogleDriveService(app) }
     }

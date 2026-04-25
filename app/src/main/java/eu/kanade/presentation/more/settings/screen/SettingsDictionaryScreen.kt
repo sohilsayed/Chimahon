@@ -40,6 +40,7 @@ import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -81,6 +82,8 @@ import kotlinx.collections.immutable.toPersistentMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tachiyomi.core.common.i18n.stringResource
@@ -89,6 +92,7 @@ import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
 import java.io.File
 import java.util.Collections.emptyList
 
@@ -112,12 +116,12 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.GLOSSARY_FIRST -> "${prefix}Glossary First"
         Marker.GLOSSARY_FIRST_BRIEF -> "${prefix}Glossary First Brief"
         Marker.SENTENCE -> "${prefix}Sentence"
+        Marker.SENTENCE_BOLD -> "${prefix}Sentence Bold"
         Marker.CLOZE_PREFIX -> "${prefix}Cloze Prefix"
         Marker.CLOZE_BODY -> "${prefix}Cloze Body"
         Marker.CLOZE_BODY_KANA -> "${prefix}Cloze Body Kana"
         Marker.CLOZE_SUFFIX -> "${prefix}Cloze Suffix"
         Marker.TAGS -> "${prefix}Tags"
-        Marker.PART_OF_SPEECH -> "${prefix}Part of Speech"
         Marker.CONJUGATION -> "${prefix}Conjugation"
         Marker.DICTIONARY -> "${prefix}Dictionary"
         Marker.DICTIONARY_ALIAS -> "${prefix}Dictionary Alias"
@@ -130,16 +134,16 @@ private val markerDisplayLabels: Map<String, String> = Marker.ALL_WITH_TODO.asso
         Marker.PITCH_ACCENT_CATEGORIES -> "${prefix}Pitch Categories"
         Marker.PITCH_ACCENT_GRAPHS -> "${prefix}Pitch Graphs"
         Marker.MORAE -> "${prefix}Morae"
-        Marker.AUDIO -> "${prefix}Audio"
         Marker.SCREENSHOT -> "${prefix}Screenshot"
-        Marker.SEARCH_QUERY -> "${prefix}Search Query"
-        Marker.MANGA -> "${prefix}Manga"
+        Marker.BOOK -> "${prefix}Book"
         Marker.CHAPTER -> "${prefix}Chapter"
         Marker.MEDIA -> "${prefix}Media"
         Marker.SINGLE_GLOSSARY -> "${prefix}Single Glossary ▸"
         Marker.PITCH_ACCENT_COMPOSITE -> "${prefix}Pitch Composite"
         Marker.SENTENCE_FURIGANA -> "${prefix}Sentence Furigana"
         Marker.SENTENCE_FURIGANA_PLAIN -> "${prefix}Sentence Furigana Plain"
+        Marker.POPUP_SELECTION_TEXT -> "${prefix}Popup Selection"
+        Marker.SELECTED_GLOSSARY -> "${prefix}Selected Glossary"
         else -> marker
     }
 }
@@ -159,6 +163,8 @@ private fun loadDictionaryList(context: Context) {
     _dictionaryNames.value = names
 }
 
+private val _isImporting = kotlinx.coroutines.flow.MutableStateFlow(false)
+
 object SettingsDictionaryScreen : SearchableSettings {
 
     @ReadOnlyComposable
@@ -168,6 +174,7 @@ object SettingsDictionaryScreen : SearchableSettings {
     @Composable
     override fun getPreferences(): List<Preference> {
         val context = LocalContext.current
+        val scope = rememberCoroutineScope()
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
 
         // Trigger recomposition when profile state changes
@@ -177,11 +184,55 @@ object SettingsDictionaryScreen : SearchableSettings {
         LaunchedEffect(Unit) {
             loadDictionaryList(context)
         }
+
+        val importLauncher = rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.GetMultipleContents(),
+        ) { uris ->
+            Log.d(TAG, "importLauncher: uris=${uris.size}")
+            if (uris.isEmpty()) return@rememberLauncherForActivityResult
+            scope.launch {
+                _isImporting.value = true
+                uris.forEach { uri ->
+                    val activeProfile = dictionaryPreferences.profileStore.getActiveProfile()
+                    val result = importDictionaryFromUri(context, uri, activeProfile)
+                    context.toast(result.first)
+                }
+                loadDictionaryList(context)
+                _isImporting.value = false
+            }
+        }
+
+        val pickDb = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                scope.launch {
+                    val targetFile = File(context.getExternalFilesDir(null), "word_audio.db")
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            targetFile.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+                    val db = chimahon.audio.WordAudioDatabase(context)
+                    if (db.updatePath(targetFile.absolutePath) && db.testConnection()) {
+                        dictionaryPreferences.wordAudioLocalPath().set(targetFile.absolutePath)
+                        context.toast("Local database loaded")
+                    } else {
+                        context.toast("Selected file is not a valid audio database or is corrupted")
+                        if (targetFile.exists()) targetFile.delete()
+                        dictionaryPreferences.wordAudioLocalPath().set("")
+                    }
+                    db.close()
+                }
+            }
+        }
+
         return listOf(
             getAppearanceGroup(),
-            getImportGroup(),
+            getImportGroup(importLauncher),
             getAnkiProfileGroup(),
             getDictionaryListGroup(),
+            getWordAudioGroup(pickDb),
             getAnkiGroup(),
         )
     }
@@ -207,6 +258,8 @@ object SettingsDictionaryScreen : SearchableSettings {
 
         val groupTermsPref = dictionaryPreferences.groupTerms()
         val groupTerms by groupTermsPref.collectAsState()
+
+        val customCssPref = dictionaryPreferences.customCss()
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_dict_appearance),
@@ -256,6 +309,59 @@ object SettingsDictionaryScreen : SearchableSettings {
                     preference = groupTermsPref,
                     title = stringResource(MR.strings.pref_dict_group_terms),
                     subtitle = stringResource(MR.strings.pref_dict_group_terms_summary),
+                ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = stringResource(MR.strings.pref_dict_custom_css),
+                    content = {
+                        var isDialogShown by remember { mutableStateOf(false) }
+                        val css by customCssPref.collectAsState()
+
+                        TextPreferenceWidget(
+                            title = stringResource(MR.strings.pref_dict_custom_css),
+                            subtitle = stringResource(MR.strings.pref_dict_custom_css_summary),
+                            onPreferenceClick = { isDialogShown = true },
+                        )
+
+                        if (isDialogShown) {
+                            var text by remember { mutableStateOf(css) }
+                            AlertDialog(
+                                onDismissRequest = { isDialogShown = false },
+                                title = { Text(stringResource(MR.strings.pref_dict_custom_css)) },
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text(
+                                            text = stringResource(MR.strings.pref_dict_custom_css_summary),
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                        OutlinedTextField(
+                                            value = text,
+                                            onValueChange = { text = it },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(400.dp),
+                                            placeholder = { Text("Paste your CSS here...") },
+                                            singleLine = false,
+                                        )
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            customCssPref.set(text)
+                                            isDialogShown = false
+                                        },
+                                    ) {
+                                        Text(stringResource(MR.strings.action_ok))
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { isDialogShown = false }) {
+                                        Text(stringResource(MR.strings.action_cancel))
+                                    }
+                                },
+                            )
+                        }
+                    },
                 ),
                 Preference.PreferenceItem.ListPreference(
                     preference = dictionaryPreferences.recursiveLookupMode(),
@@ -316,7 +422,9 @@ object SettingsDictionaryScreen : SearchableSettings {
     }
 
     @Composable
-    private fun getImportGroup(): Preference.PreferenceGroup {
+    private fun getImportGroup(
+        importLauncher: androidx.activity.result.ActivityResultLauncher<String>
+    ): Preference.PreferenceGroup {
         val context = LocalContext.current
         val scope = rememberCoroutineScope()
         val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
@@ -325,24 +433,6 @@ object SettingsDictionaryScreen : SearchableSettings {
         val profileStore = dictionaryPreferences.profileStore
         val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
 
-        val importLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.GetMultipleContents(),
-        ) { uris ->
-            Log.d(TAG, "importLauncher: uris=${uris.size}")
-            if (uris.isEmpty()) return@rememberLauncherForActivityResult
-            scope.launch {
-                uris.forEach { uri ->
-                    Log.d(TAG, "importDictionaryFromUri: starting import for $uri...")
-                    val result = importDictionaryFromUri(context, uri, activeProfile)
-                    Log.d(TAG, "importDictionaryFromUri: result=${result.first} success=${result.second}")
-
-                    context.toast(result.first)
-                }
-
-                Log.d(TAG, "refreshing dictionary list after batch import")
-                loadDictionaryList(context)
-            }
-        }
 
         return Preference.PreferenceGroup(
             title = stringResource(MR.strings.pref_import_dictionary),
@@ -350,6 +440,24 @@ object SettingsDictionaryScreen : SearchableSettings {
                 Preference.PreferenceItem.CustomPreference(
                     title = stringResource(MR.strings.pref_import_dictionary),
                     content = {
+                        val isImporting by _isImporting.collectAsState()
+                        if (isImporting) {
+                            AlertDialog(
+                                onDismissRequest = {},
+                                title = { Text(stringResource(MR.strings.pref_import_dictionary)) },
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        androidx.compose.material3.CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(Modifier.width(16.dp))
+                                        Text("Importing dictionary... Please wait.")
+                                    }
+                                },
+                                confirmButton = {}
+                            )
+                        }
+
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1296,7 +1404,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                 onDismissRequest = { dropdownExpanded = false },
                 modifier = Modifier.width(200.dp),
             ) {
-                Marker.ALL.forEach { marker ->
+                Marker.ALL.filter { it != Marker.POPUP_SELECTION_TEXT }.forEach { marker ->
                     if (marker == Marker.SINGLE_GLOSSARY) {
                         DropdownMenuItem(
                             text = {
@@ -1403,6 +1511,169 @@ object SettingsDictionaryScreen : SearchableSettings {
                 }
             }
         }
+    }
+
+    @Composable
+    private fun getWordAudioGroup(pickDb: androidx.activity.result.ActivityResultLauncher<Array<String>>): Preference.PreferenceGroup {
+        val context = LocalContext.current
+        val scope = rememberCoroutineScope()
+        val prefs = remember { Injekt.get<DictionaryPreferences>() }
+        val json = remember { Injekt.get<kotlinx.serialization.json.Json>() }
+        
+        val enabled by prefs.wordAudioEnabled().collectAsState()
+        val autoplay by prefs.wordAudioAutoplay().collectAsState()
+        val localEnabled by prefs.wordAudioLocalEnabled().collectAsState()
+        val localPath by prefs.wordAudioLocalPath().collectAsState()
+        val rawSources by prefs.wordAudioSources().collectAsState()
+        
+        val sources = remember(rawSources) {
+            try {
+                json.decodeFromString<List<chimahon.audio.WordAudioSource>>(rawSources)
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        
+        val updateSources: (List<chimahon.audio.WordAudioSource>) -> Unit = { newSources ->
+            prefs.wordAudioSources().set(json.encodeToString(newSources))
+        }
+
+
+        return Preference.PreferenceGroup(
+            title = "Word Audio",
+            preferenceItems = persistentListOf(
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = prefs.wordAudioEnabled(),
+                    title = "Enable Word Audio",
+                    subtitle = "Show audio buttons in dictionary entries",
+                ),
+                Preference.PreferenceItem.SwitchPreference(
+                    preference = prefs.wordAudioAutoplay(),
+                    title = "Autoplay",
+                    subtitle = "Automatically play the first audio found",
+                ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = "Local Audio",
+                    content = {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Local Audio (android.db)", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                                Switch(checked = localEnabled, onCheckedChange = { prefs.wordAudioLocalEnabled().set(it) })
+                            }
+                            if (localEnabled) {
+                                Text(
+                                    text = if (localPath.isNotBlank()) "Path: $localPath" else "No database selected",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (localPath.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
+                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.padding(top = 8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { 
+                                            try {
+                                                pickDb.launch(arrayOf("*/*")) 
+                                            } catch (e: Exception) {
+                                                context.toast("Error launching file picker")
+                                                Log.e(TAG, "pickDb launch error", e)
+                                            }
+                                        }
+                                    ) {
+                                        Text("Select Database")
+                                    }
+
+                                    if (localPath.isNotBlank()) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val file = java.io.File(localPath)
+                                                if (file.exists()) file.delete()
+                                                prefs.wordAudioLocalPath().set("")
+                                            }
+                                        ) {
+                                            Text("Delete Database")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ),
+                Preference.PreferenceItem.CustomPreference(
+                    title = "Online Sources",
+                    content = {
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text("Online Sources", style = MaterialTheme.typography.titleMedium)
+                            
+                            // Sources List
+                            sources.forEachIndexed { index, source ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(source.name, style = MaterialTheme.typography.bodyMedium)
+                                        Text(source.url, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    }
+                                    Checkbox(
+                                        checked = source.isEnabled,
+                                        onCheckedChange = { checked ->
+                                            val newSources = sources.toMutableList()
+                                            newSources[index] = source.copy(isEnabled = checked)
+                                            updateSources(newSources)
+                                        }
+                                    )
+                                    IconButton(onClick = {
+                                        val newSources = sources.toMutableList()
+                                        newSources.removeAt(index)
+                                        updateSources(newSources)
+                                    }) {
+                                        Icon(Icons.Outlined.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                            
+                            // Add Source UI
+                            var newName by remember { mutableStateOf("") }
+                            var newUrl by remember { mutableStateOf("") }
+                            
+                            Column(modifier = Modifier.padding(top = 16.dp).background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp)).padding(8.dp)) {
+                                Text("Add Source", style = MaterialTheme.typography.labelLarge)
+                                OutlinedTextField(
+                                    value = newName,
+                                    onValueChange = { newName = it },
+                                    label = { Text("Name") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                    OutlinedTextField(
+                                        value = newUrl,
+                                        onValueChange = { newUrl = it },
+                                        label = { Text("URL Template ({term}, {reading})") },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true
+                                    )
+                                    IconButton(
+                                        onClick = {
+                                            if (newName.isNotBlank() && newUrl.isNotBlank()) {
+                                                val newSource = chimahon.audio.WordAudioSource(name = newName, url = newUrl)
+                                                updateSources(sources + newSource)
+                                                newName = ""
+                                                newUrl = ""
+                                            }
+                                        },
+                                        enabled = newName.isNotBlank() && newUrl.isNotBlank()
+                                    ) {
+                                        Icon(Icons.Outlined.Add, contentDescription = "Add")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+            )
+        )
     }
 
     private fun parseMarkersForDisplay(fieldValue: String): List<String> {

@@ -2,27 +2,43 @@
   color-scheme: light dark;
   --bg: var(--bg-dynamic, transparent);
   --fg: var(--fg-dynamic, #222);
+  --secondary: var(--secondary-dynamic, #777);
   --accent: #2ecc71;
   --on-accent: #ffffff;
-  --border: var(--border-dynamic, rgba(128, 128, 128, 0.25));
-  --tag-text: #fff;
-  --tag-default: #8a8a91;
-  --tag-dictionary: #aa66cc;
-  --tag-pos: #565656;
-  --tag-frequency: #5cb85c;
-  --tag-pronunciation: #6640be;
-  --gloss-image-background: #eeeeee;
+  --border: var(--border-dynamic, rgba(128, 128, 128, 0.15));
+  --hover-bg: var(--hover-bg-dynamic, rgba(128, 128, 128, 0.1));
+  
+  /* Tag Category Colors */
+  --tag-default-background-color: #8a8a91;
+  --tag-name-background-color: #b6327a;
+  --tag-expression-background-color: #f0ad4e;
+  --tag-popular-background-color: #0275d8;
+  --tag-frequent-background-color: #5bc0de;
+  --tag-archaism-background-color: #d9534f;
+  --tag-dictionary-background-color: #aa66cc;
+  --tag-frequency-background-color: #5cb85c;
+  --tag-part-of-speech-background-color: #565656;
+  --tag-search-background-color: #8a8a91;
+  --tag-pronunciation-dictionary-background-color: #6640be;
+  --tag-dialect-background-color: #2b70b4;
+  --tag-style-background-color: #69696e;
+
+  /* Yomichan/Themoeway Variable Aliases */
+  --background-color: var(--bg);
+  --text-color: var(--fg);
+  --entry-vertical-padding: 0.5em;
+  --entry-horizontal-padding: 0.5em;
+  --compact-list-separator: ' | ';
+
+  /* Typography & Layout */
+  --headword-font-size: 1.8em;
+  --font-size: 14px;
+  --line-height: 1.5;
 }
 
 :root[data-theme="dark"] {
   --fg: var(--fg-dynamic, #ddd);
-  --border: var(--border-dynamic, rgba(128, 128, 128, 0.4));
-  --tag-default: #69696e;
-  --tag-dictionary: #9057ad;
-  --tag-frequency: #489148;
-  --tag-pos: #888888;
-  --tag-pronunciation: #9b6fd0;
-  --gloss-image-background: #2f2f2f;
+  --border: var(--border-dynamic, rgba(255, 255, 255, 0.12));
 }
 
 html, body {
@@ -31,268 +47,273 @@ html, body {
   background: var(--bg);
   color: var(--fg);
   font-family: sans-serif;
-  line-height: 1.5;
-}
-
-.popup-header {
-  padding: 6px 10px;
-  font-size: 0.85em;
-  color: var(--fg);
-  opacity: 0.7;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  border-bottom: 1px solid var(--border);
-}
-
-/* ── Lookup History Tabs ─────────────────────────────────────── */
-.lookup-tabs {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;          /* Firefox */
-  border-bottom: 1px solid var(--border);
-  background: var(--bg);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.lookup-tabs::-webkit-scrollbar {
-  display: none;                  /* WebKit */
-}
-
-.lookup-tab {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex-shrink: 0;
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  color: var(--fg);
-  font-size: 0.8em;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0.65;
-  transition: opacity 0.15s, background 0.15s, border-color 0.15s;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-.lookup-tab.active {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
-  opacity: 1;
-}
-
-.lookup-tab.stack-button {
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-  border-color: var(--accent);
-  color: var(--accent);
-  opacity: 1;
-}
-
-.lookup-tab:not(.active):not(.stack-button):active {
-  opacity: 1;
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
-}
-
-.lookup-tab-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  font-size: 10px;
-  line-height: 1;
-  opacity: 0.7;
-  pointer-events: none;           /* close handled by tab click on × span */
-  font-style: normal;
+  line-height: var(--line-height);
 }
 
 .entries {
-  padding: 10px;
+  padding: 0.5em;
 }
 
 .entry {
-  border-bottom: 1px solid var(--border);
-  padding: 12px 0;
-  content-visibility: auto;
+  padding: 0.5em 0;
+  position: relative;
 }
 
-.entry-body-section {
-  margin-top: 10px;
+.entry + .entry {
+  border-top: 1px solid var(--border);
 }
 
+/* ── Headword ────────────────────────────────────────────────── */
 .headword-term {
-  font-size: 1.8em;
+  font-size: var(--headword-font-size);
   font-weight: 700;
+  line-height: 1.2;
 }
+
+.headword-term.popular { color: var(--accent); }
+.headword-term.rare { color: var(--secondary); opacity: 0.7; }
 
 .headword-reading {
-  font-size: 1.25rem;
-  margin-left: 0.4rem;
-  opacity: 0.85;
+  font-size: 1.2rem;
+  margin-left: 0.5em;
+  color: var(--secondary);
 }
 
-.headword ruby rt, .headword-term ruby rt, .headword-reading ruby rt {
-  font-size: 0.5em;
-  line-height: 1.1;
-  font-family: inherit;
-  letter-spacing: 0.05em;
-  margin-left: 0;
+.headword ruby rt {
+  font-size: 0.55em;
+  opacity: 0.9;
 }
 
-.inflection-toggle {
-  font-size: 0.85em;
-  cursor: pointer;
-  user-select: none;
-}
-
-.inflection-toggle:hover {
-  opacity: 1;
-}
-
-.inflection-rule-chains {
-  margin: 4px 0 8px 0;
-  padding-left: 1rem;
-  font-size: 0.9em;
-  opacity: 0.8;
-}
-
-.definition-list {
-  margin: 0;
-  padding-left: 1.25rem;
-}
-
-.definition-item {
-  font-size: 1rem;
-  line-height: 1.6;
-  margin: 0.5em 0;
-}
-
-.definition-tag-list {
+.entry-headword-row {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.gloss-content {
-  font-size: inherit;
-  line-height: inherit;
-}
-
-.gloss-plain-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.tag {
-  display: inline-flex;
   align-items: center;
+  gap: 8px;
+  margin-bottom: 0.4em;
 }
 
-.tag-label,
-.tag-body {
-  border-radius: 0.25em;
-  color: var(--tag-text);
-  background: var(--tag-default);
+/* ── Tags ────────────────────────────────────────────────────── */
+.tag {
+  --tag-color: var(--tag-default-background-color);
+  display: inline-flex;
   font-size: 0.75em;
-  font-weight: 700;
-  padding: 0.15rem 0.45rem;
-}
-
-.tag[data-category="dictionary"] .tag-label,
-.tag[data-category="dictionary"] .tag-body { background: var(--tag-dictionary); }
-
-.tag[data-category="partOfSpeech"] .tag-label,
-.tag[data-category="partOfSpeech"] .tag-body { background: var(--tag-pos); }
-
-.tag[data-category="frequency"] .tag-label,
-.tag[data-category="frequency"] .tag-body { background: var(--tag-frequency); }
-
-.tag[data-category="pronunciation-dictionary"] .tag-label,
-.tag[data-category="pronunciation-dictionary"] .tag-body { background: var(--tag-pronunciation); }
-
-.frequency-group-list,
-.pronunciation-group-list {
-  margin: 0;
-  padding-left: 1.1rem;
-}
-
-.frequency-top-section {
-  margin-top: 6px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.frequency-top-section .tag {
-  align-items: stretch;
-}
-
-.frequency-top-section .tag-body {
-  margin-left: 2px;
-}
-
-.frequency-item + .frequency-item::before {
-  content: " | ";
-  opacity: 0.5;
-  padding: 0 0.2rem;
-}
-
-.structured-content {
-  display: block;
-  font-size: inherit;
-  line-height: inherit;
-  white-space: normal;
-  word-break: normal;
-  overflow-wrap: break-word;
-}
-
-.headword-text-container {
-  ruby-position: over;
-  ruby-align: center;
-}
-
-.gloss-sc-rp {
-  font-size: 0.9em;
-}
-
-.gloss-sc-ol,
-.gloss-sc-ul,
-.gloss-sc-table {
-  line-height: 1.6;
-}
-
-.gloss-sc-svg,
-svg.gloss-sc-svg,
-.gloss-content svg {
-  display: inline-block;
-  width: auto;
-  max-width: 100%;
-  height: auto;
-  overflow: visible;
+  margin: 0 0.3em 0.2em 0;
   vertical-align: middle;
 }
 
-.gloss-sc-table-container {
-  overflow-x: auto;
+.tag-label {
+  background-color: var(--tag-color);
+  border-radius: 3px;
+  padding: 0.1em 0.4em;
+  color: #fff;
+  font-weight: 700;
 }
 
+.tag-body {
+  background-color: color-mix(in srgb, var(--tag-color) 80%, black);
+  border-radius: 0 3px 3px 0;
+  padding: 0.1em 0.4em;
+  color: #fff;
+  font-weight: 700;
+  margin-left: 1px;
+}
+
+.tag[data-category="name"]       { --tag-color: var(--tag-name-background-color); }
+.tag[data-category="popular"]    { --tag-color: var(--tag-popular-background-color); }
+.tag[data-category="dictionary"] { --tag-color: var(--tag-dictionary-background-color); }
+.tag[data-category="frequency"]  { --tag-color: var(--tag-frequency-background-color); }
+
+.tag.selected .tag-label {
+  box-shadow: 0 0 0 2px var(--accent);
+  opacity: 1;
+}
+.tag.selected {
+  filter: brightness(1.2);
+}
+
+/* ── Dictionary Grouping ─────────────────────────────────────── */
+.dictionary-group {
+  margin-top: 1.2em;
+  border-top: 1px solid var(--border);
+  padding-top: 0.8em;
+}
+
+.dictionary-group:first-of-type {
+  border-top: none;
+  margin-top: 0.5em;
+  padding-top: 0;
+}
+
+.dictionary-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.definition-list {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+  list-style-type: decimal;
+}
+
+.definition-list[data-count='1'] {
+  padding-left: 0;
+  list-style-type: none;
+}
+
+.definition-item {
+  margin-bottom: 0.4em;
+  line-height: 1.5;
+}
+
+/* ── Pitch Accent ────────────────────────────────────────────── */
+
+/* Matches Yomitan's --pronunciation-annotation-color convention so that
+   custom dictionary CSS targeting that variable works out of the box. */
+:root {
+  --pronunciation-annotation-color: var(--fg, #222);
+}
+:root[data-theme="dark"] {
+  --pronunciation-annotation-color: var(--fg, #ddd);
+}
+
+.pitches-section {
+  margin: 0.4em 0 0.8em 0;
+  color: var(--fg);
+}
+
+/* ── Downstep notation [N] ───────────────────────────── */
+/* Hidden by default; custom dictionary CSS can show it by targeting
+   .pronunciation-downstep-notation-container */
+.pronunciation-downstep-notation-container {
+  display: none;
+}
+.pronunciation-downstep-notation {
+  display: inline;
+}
+.pronunciation-downstep-notation-prefix,
+.pronunciation-downstep-notation-number,
+.pronunciation-downstep-notation-suffix {
+  display: inline;
+}
+
+/* ── Mora text line ──────────────────────────────────── */
+.pronunciation-text {
+  display: inline;
+}
+.pronunciation-mora {
+  display: inline-block;
+  position: relative;
+}
+.pronunciation-mora-line {
+  border-color: var(--pronunciation-annotation-color);
+}
+.pronunciation-mora[data-pitch=high] > .pronunciation-mora-line {
+  display: block;
+  user-select: none;
+  pointer-events: none;
+  position: absolute;
+  top: 0.1em;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top-width: 0.1em;
+  border-top-style: solid;
+}
+.pronunciation-mora[data-pitch=high][data-pitch-next=low] > .pronunciation-mora-line {
+  right: -0.1em;
+  height: 0.4em;
+  border-right-width: 0.1em;
+  border-right-style: solid;
+}
+.pronunciation-mora[data-pitch=high][data-pitch-next=low] {
+  padding-right: 0.1em;
+  margin-right: 0.1em;
+}
+
+/* ── Per-character spans ─────────────────────────────── */
+.pronunciation-character {
+  display: inline;
+}
+.pronunciation-character-group {
+  display: inline-block;
+  position: relative;
+}
+
+/* ── Devoice indicator (dotted circle over the mora) ─── */
+.pronunciation-devoice-indicator {
+  display: block;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1.125em;
+  height: 1.125em;
+  border-radius: 50%;
+  box-sizing: border-box;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  border: 1.5px dotted #c83c28;
+}
+
+/* ── Nasal indicator (small solid circle, top-right) ─── */
+.pronunciation-nasal-indicator {
+  display: block;
+  position: absolute;
+  right: -0.125em;
+  top: 0.125em;
+  width: 0.375em;
+  height: 0.375em;
+  border-radius: 50%;
+  box-sizing: border-box;
+  z-index: 1;
+  border: 1.5px solid #c83c28;
+}
+/* Hidden combining handakuten for copy-paste fidelity */
+.pronunciation-nasal-diacritic {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+}
+
+/* ── SVG pitch graph ─────────────────────────────────── */
+.pronunciation-graph {
+  display: inline-block;
+  vertical-align: middle;
+  height: 1.5em;
+  overflow: visible;
+  color: inherit;
+}
+.pronunciation-graph-line,
+.pronunciation-graph-line-tail {
+  fill: none;
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
+}
+.pronunciation-graph-line-tail {
+  stroke-dasharray: 5 5;
+}
+.pronunciation-graph-dot {
+  fill: var(--pronunciation-annotation-color);
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
+}
+.pronunciation-graph-dot-downstep1 {
+  fill: none;
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
+}
+.pronunciation-graph-dot-downstep2 {
+  fill: var(--pronunciation-annotation-color);
+}
+.pronunciation-graph-triangle {
+  fill: none;
+  stroke: var(--pronunciation-annotation-color);
+  stroke-width: 5;
+}
+
+/* ── Structured content: tables & images ─────────────── */
+/* Required for custom dictionary CSS that targets these Yomitan classes. */
 .gloss-sc-th,
 .gloss-sc-td,
 th,
@@ -328,7 +349,7 @@ td {
 .gloss-image-background {
   position: absolute;
   inset: 0;
-  background-color: var(--gloss-image-background);
+  background-color: var(--border);
   background-image: var(--image);
   background-position: center;
   background-repeat: no-repeat;
@@ -347,171 +368,62 @@ td {
   display: none;
 }
 
-.hoshi-empty {
-  opacity: 0.7;
-  padding: 10px 4px;
+.gloss-image-link[data-appearance=monochrome] .gloss-image {
+  opacity: 0;
 }
 
-.entry-headword-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* ── Anki & Audio ────────────────────────────────────────────── */
 .anki-add-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border: 1.5px solid var(--border);
   border-radius: 50%;
   background: transparent;
-  cursor: pointer;
   color: var(--fg);
-  opacity: 0.5;
-  font-size: 18px;
   font-weight: bold;
-  line-height: 1;
   margin-left: auto;
-  padding: 0;
-  transition: all 0.2s ease;
-  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .anki-add-btn.anki-added {
   color: #2ecc71;
   border-color: #2ecc71;
-  opacity: 1;
 }
 
-.anki-add-btn:hover {
-  opacity: 1;
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
-.anki-add-btn.anki-added:hover {
-  background: #2ecc71;
-  color: #fff;
-}
-
-.anki-add-btn:active {
-  transform: scale(0.9);
-}
-
-/* ── Word-tap highlight on glossary text ─────────────────────── */
-.gloss-tap-target {
+.word-audio-btn {
+  background: none;
+  border: none;
+  font-size: 1.2em;
   cursor: pointer;
-  border-radius: 2px;
-  transition: background 0.1s;
-  -webkit-tap-highlight-color: rgba(0,0,0,0.08);
+  color: var(--fg);
 }
 
-/* Pitch Accent Rendering */
-.pitches-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5em;
-    margin-top: 0.25em;
-    margin-bottom: 0.75em;
+/* ── Tabs ────────────────────────────────────────────────────── */
+.lookup-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  overflow-x: auto;
 }
 
-.pitch-entry {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2em;
+.lookup-tab {
+  padding: 4px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  font-size: 0.85em;
+  white-space: nowrap;
 }
 
-.pitch-group-tag {
-    font-size: 0.8em;
-    color: var(--fg-dynamic);
-    opacity: 0.7;
-    margin-bottom: 0.1em;
-}
-
-.pitch-number {
-    font-size: 0.9em;
-    font-weight: bold;
-    color: var(--accent);
-    margin-right: 0.5em;
-}
-
-.pronunciation-text {
-    display: inline;
-    font-size: 1.1em;
-}
-
-.pronunciation-mora {
-    display: inline-block;
-    position: relative;
-}
-
-.pronunciation-mora-line {
-    border-color: var(--fg-dynamic);
-}
-
-.pronunciation-mora[data-pitch=high]>.pronunciation-mora-line {
-    display: block;
-    user-select: none;
-    pointer-events: none;
-    position: absolute;
-    top: 0.1em;
-    left: 0;
-    right: 0;
-    height: 0;
-    border-top-width: 0.1em;
-    border-top-style: solid;
-}
-
-.pronunciation-mora[data-pitch=high][data-pitch-next=low]>.pronunciation-mora-line {
-    right: -0.1em;
-    height: 0.4em;
-    border-right-width: 0.1em;
-    border-right-style: solid;
-}
-
-.pronunciation-mora[data-pitch=high][data-pitch-next=low] {
-    padding-right: 0.1em;
-    margin-right: 0.1em;
-}
-
-.pronunciation-graph {
-    display: inline-block;
-    vertical-align: middle;
-    height: 1.5em;
-}
-
-.pronunciation-graph-line,
-.pronunciation-graph-line-tail {
-    fill: none;
-    stroke: var(--fg-dynamic);
-    stroke-width: 5;
-}
-
-.pronunciation-graph-line-tail {
-    stroke-dasharray: 5 5;
-}
-
-.pronunciation-graph-dot {
-    fill: var(--fg-dynamic);
-    stroke: var(--fg-dynamic);
-    stroke-width: 5;
-}
-
-.pronunciation-graph-dot-downstep1 {
-    fill: none;
-    stroke: var(--fg-dynamic);
-    stroke-width: 5;
-}
-
-.pronunciation-graph-dot-downstep2 {
-    fill: var(--fg-dynamic);
-}
-
-.pronunciation-graph-triangle {
-    fill: none;
-    stroke: var(--fg-dynamic);
-    stroke-width: 5;
+.lookup-tab.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }

@@ -195,6 +195,7 @@ data object DictionaryTab : Tab {
         val groupTerms by dictionaryPreferences.groupTerms().collectAsState()
         val recursiveNavMode by dictionaryPreferences.recursiveLookupMode().collectAsState()
         val popupFontSizePref by dictionaryPreferences.fontSize().collectAsState()
+        val customCss by dictionaryPreferences.customCss().collectAsState()
         // ── Lookup history stack ──────────────────────────────────────────────
         val lookupStack = remember { mutableStateListOf<TabLookupFrame>() }
         var activeTabIndex by remember { mutableIntStateOf(0) }
@@ -283,8 +284,8 @@ data object DictionaryTab : Tab {
         }
 
         // Simple callback for Anki lookup - index maps to results array, glossaryIndex is optional
-        val onAnkiLookup: ((Int, Int?) -> Unit)? = if (ankiEnabled) {
-            { resultIndex, glossaryIndex ->
+        val onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = if (ankiEnabled) {
+            { resultIndex, glossaryIndex, selectedDict, popupSelection ->
                 val result = results.getOrNull(resultIndex)
                 if (result != null) {
                     scope.launch {
@@ -299,6 +300,8 @@ data object DictionaryTab : Tab {
                             dupScope = ankiDupScope,
                             dupAction = ankiDupAction,
                             glossaryIndex = glossaryIndex,
+                            popupSelection = popupSelection,
+                            selectedDict = selectedDict,
                         )
                         when (ankiResult) {
                             is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
@@ -445,6 +448,8 @@ data object DictionaryTab : Tab {
                     tabs = buildTabs(),
                     recursiveNavMode = recursiveNavMode,
                     fontSize = popupFontSizePref,
+                    customCss = customCss,
+                    wordAudioEnabled = remember { Injekt.get<DictionaryPreferences>().wordAudioEnabled() }.collectAsState().value,
                     webViewProvider = { context ->
                         retainedWebView ?: WebView(context).also { retainedWebView = it }
                     },

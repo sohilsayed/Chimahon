@@ -33,6 +33,8 @@
     <string name="label_data_storage">Data and storage</string>
     <string name="label_dictionary">Dictionary</string>
     <string name="label_novels">Novels</string>
+    <string name="novel_missing_file">Missing File — tap to import</string>
+    <string name="backup_option_novels">Novel progress &amp; stats</string>
     <string name="label_stats">Statistics</string>
     <string name="label_migration">Migrate</string>
     <string name="label_extensions">Extensions</string>
@@ -237,6 +239,8 @@
     <string name="pref_dict_show_frequency_harmonic_summary">Display harmonic rank instead of full frequency list in dictionary popup</string>
     <string name="pref_dict_group_terms">Group dictionary definitions</string>
     <string name="pref_dict_group_terms_summary">Show multiple dictionary definitions under one headword</string>
+    <string name="pref_dict_custom_css">Custom CSS</string>
+    <string name="pref_dict_custom_css_summary">Inject custom CSS into the dictionary renderer</string>
     <string name="pref_dict_invalid_width">Enter a number between 200 and 1920</string>
     <string name="pref_dict_invalid_height">Enter a number between 100 and 1080</string>
     <string name="pref_dict_invalid_scale">Enter a number between 50 and 200</string>

@@ -8,6 +8,12 @@ import chimahon.MediaInfo
 import chimahon.PitchEntry
 import org.json.JSONArray
 import org.json.JSONObject
+import chimahon.audio.WordAudioService
+import chimahon.audio.WordAudioResult
+import eu.kanade.tachiyomi.network.NetworkHelper
+import okhttp3.Request
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
 // =============================================================================
 // Legacy FieldType enum for UI backwards compatibility
@@ -66,12 +72,10 @@ object Marker {
     const val PITCH_ACCENTS = "pitch-accents"
     const val PITCH_ACCENT_POSITIONS = "pitch-accent-positions"
     const val PITCH_ACCENT_CATEGORIES = "pitch-accent-categories"
-    const val AUDIO = "audio"
     const val SCREENSHOT = "screenshot"
     const val SEARCH_QUERY = "search-query"
     const val URL = "url"
-    const val DOCUMENT_TITLE = "document-title"
-    const val MANGA = "manga"
+    const val BOOK = "book"
     const val CHAPTER = "chapter"
     const val MEDIA = "media"
     const val SINGLE_GLOSSARY = "single-glossary"
@@ -81,37 +85,40 @@ object Marker {
     const val SENTENCE_FURIGANA = "sentence-furigana"
     const val SENTENCE_FURIGANA_PLAIN = "sentence-furigana-plain"
     const val SENTENCE_TRANSLATION = "sentence-translation"
-    const val WORD_AUDIO = "word-audio"
-    const val SENTENCE_AUDIO = "sentence-audio"
     const val SELECTION_TEXT = "selection-text"
     const val MISC_INFO = "misc-info"
+    const val POPUP_SELECTION_TEXT = "popup-selection-text"
+    const val SELECTED_GLOSSARY = "selected-glossary"
+    const val DOCUMENT_TITLE = "document-title"
+    const val WORD_AUDIO = "word-audio"
+    const val SENTENCE_AUDIO = "sentence-audio"
 
     val ALL: List<String> = listOf(
         EXPRESSION, READING, FURIGANA, FURIGANA_PLAIN,
         GLOSSARY, GLOSSARY_BRIEF, GLOSSARY_PLAIN, GLOSSARY_NO_DICT,
         GLOSSARY_FIRST, GLOSSARY_FIRST_BRIEF,
         SENTENCE, SENTENCE_BOLD, CLOZE_PREFIX, CLOZE_BODY, CLOZE_BODY_KANA, CLOZE_SUFFIX,
-        TAGS, PART_OF_SPEECH, CONJUGATION,
+        TAGS, CONJUGATION,
         DICTIONARY, DICTIONARY_ALIAS,
         FREQUENCIES, FREQUENCY_LOWEST, FREQUENCY_HARMONIC_RANK, FREQUENCY_AVERAGE_RANK,
         PITCH_ACCENTS, PITCH_ACCENT_POSITIONS, PITCH_ACCENT_CATEGORIES,
         PITCH_ACCENT_GRAPHS, PITCH_ACCENT_COMPOSITE, MORAE,
-        MANGA, CHAPTER, MEDIA,
-        SINGLE_GLOSSARY,
-        SCREENSHOT, SEARCH_QUERY,
-        URL, DOCUMENT_TITLE,
+        BOOK, CHAPTER, MEDIA,
+        SINGLE_GLOSSARY, SELECTED_GLOSSARY,
+        SCREENSHOT, POPUP_SELECTION_TEXT,
+        WORD_AUDIO, SENTENCE_AUDIO,
     )
 
-    val ALL_WITH_TODO: List<String> = ALL + listOf(AUDIO)
+    val ALL_WITH_TODO: List<String> = ALL
 
-    val TODO_MARKERS = setOf(AUDIO)
+    val TODO_MARKERS = setOf<String>()
 
     val AUTO_DETECT_ALIASES: Map<String, List<String>> = mapOf(
         EXPRESSION to listOf("expression", "phrase", "term", "word"),
         READING to listOf("reading", "expression-reading", "word-reading"),
         FURIGANA to listOf("furigana", "expression-furigana", "word-furigana"),
         GLOSSARY to listOf("glossary", "definition", "meaning"),
-        AUDIO to listOf("audio", "sound", "word-audio", "term-audio"),
+        WORD_AUDIO to listOf("audio", "sound", "word-audio", "term-audio"),
         DICTIONARY to listOf("dictionary", "dict"),
         PITCH_ACCENTS to listOf("pitch-accents", "pitch-accent", "pitchaccent", "accent", "pitch-pattern"),
         PITCH_ACCENT_POSITIONS to listOf("pitch-accent-positions", "pitch-positions", "positions", "pitchaccentpositions"),
@@ -130,7 +137,7 @@ object Marker {
         TAGS to listOf("tags", "tag"),
         PART_OF_SPEECH to listOf("part-of-speech", "pos", "part"),
         CONJUGATION to listOf("conjugation", "inflection"),
-        MANGA to listOf("manga", "series", "title"),
+        BOOK to listOf("book", "manga", "series", "title"),
         CHAPTER to listOf("chapter", "episode"),
         MEDIA to listOf("media", "source", "context"),
     )
@@ -183,8 +190,11 @@ object AnkiCardCreator {
         media: MediaInfo? = null,
         screenshotBytes: ByteArray? = null,
         glossaryIndex: Int? = null,
+        selection: String? = null,
+        selectedDict: String? = null,
+        popupSelection: String? = null,
     ): AnkiResult {
-        android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, fieldMapJson=$fieldMapJson, glossaryIndex=$glossaryIndex")
+        android.util.Log.d(TAG, "addToAnki: deck=$deck, model=$model, fieldMapJson=$fieldMapJson, glossaryIndex=$glossaryIndex, popupSelection=$popupSelection")
 
         if (deck.isBlank() || model.isBlank()) {
             android.util.Log.w(TAG, "addToAnki: NotConfigured - deck or model is blank")
@@ -205,7 +215,11 @@ object AnkiCardCreator {
             val fieldMap = parseFieldMap(fieldMapJson)
             android.util.Log.d(TAG, "addToAnki: parsed fieldMap=$fieldMap")
             val cloze = if (sentence.isNotEmpty() && offset >= 0) {
-                buildCloze(sentence, offset, filteredResult.term.expression, filteredResult.term.reading)
+                // Use result.matched (the exact surface form the dictionary engine consumed)
+                // so the bold window is precisely the word that was looked up, not the base form.
+                // If the caller provided a manual selection override, use that instead.
+                val boldTarget = selection?.takeIf { it.isNotEmpty() } ?: result.matched
+                buildCloze(sentence, offset, filteredResult.term.expression, filteredResult.term.reading, boldTarget)
             } else {
                 null
             }
@@ -223,7 +237,37 @@ object AnkiCardCreator {
                 }
             }
 
-            val fields = buildFields(filteredResult, fieldMap, cloze, media, screenshotFilename)
+            var wordAudioFilename: String? = null
+            val hasWordAudioMarker = fieldMap.values.any { it.contains("{${Marker.WORD_AUDIO}}") }
+            if (hasWordAudioMarker) {
+                try {
+                    val wordAudioService = Injekt.get<WordAudioService>()
+                    val audioResults = wordAudioService.findWordAudio(filteredResult.term.expression, filteredResult.term.reading)
+                    if (audioResults.isNotEmpty()) {
+                        // Use the first result (priority order)
+                        val bestAudio = audioResults.first()
+                        val audioData = if (bestAudio.url.startsWith("chimahon-local://")) {
+                            val uri = android.net.Uri.parse(bestAudio.url)
+                            val sourceId = uri.host ?: ""
+                            val filePath = uri.path?.substring(1) ?: ""
+                            wordAudioService.getAudioData(filePath, sourceId)
+                        } else {
+                            wordAudioService.fetchRemoteAudioData(bestAudio.url)
+                        }
+
+                        if (audioData != null) {
+                            val ext = bestAudio.url.substringBefore('?').substringAfterLast('.', "mp3").lowercase()
+                            val filename = "chimahon_audio_${filteredResult.term.expression}_${filteredResult.term.reading}_${System.currentTimeMillis()}.$ext"
+                            wordAudioFilename = bridge.storeMedia(filename, audioData)
+                            android.util.Log.d(TAG, "addToAnki: stored word audio media as $wordAudioFilename")
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "addToAnki: failed to store word audio media", e)
+                }
+            }
+
+            val fields = buildFields(filteredResult, fieldMap, cloze, media, screenshotFilename, wordAudioFilename, selectedDict, popupSelection)
             android.util.Log.d(TAG, "addToAnki: built fields=$fields")
             val tagList = tags.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
@@ -351,14 +395,35 @@ object AnkiCardCreator {
         cloze: Cloze? = null,
         media: MediaInfo? = null,
         screenshotFilename: String? = null,
+        wordAudioFilename: String? = null,
+        selectedDict: String? = null,
+        popupSelection: String? = null,
     ): Map<String, String> = fieldMap.mapValues { (_, template) ->
-        formatField(template, result, cloze, media, screenshotFilename)
+        formatField(template, result, cloze, media, screenshotFilename, wordAudioFilename, selectedDict, popupSelection)
     }
 
-    private fun formatField(template: String, result: LookupResult, cloze: Cloze?, media: MediaInfo?, screenshotFilename: String?): String {
+    private fun formatField(
+        template: String,
+        result: LookupResult,
+        cloze: Cloze?,
+        media: MediaInfo?,
+        screenshotFilename: String?,
+        wordAudioFilename: String?,
+        selectedDict: String?,
+        popupSelection: String?,
+    ): String {
         if (template.isBlank()) return ""
         return MARKER_PATTERN.replace(template) { match ->
-            renderMarker(match.groupValues[1], result, cloze, media, screenshotFilename)
+            renderMarker(
+                marker = match.groupValues[1],
+                result = result,
+                cloze = cloze,
+                media = media,
+                screenshotFilename = screenshotFilename,
+                wordAudioFilename = wordAudioFilename,
+                selectedDict = selectedDict,
+                popupSelection = popupSelection,
+            )
         }
     }
 
@@ -371,6 +436,9 @@ object AnkiCardCreator {
         offset: Int,
         expression: String,
         reading: String,
+        // matched: the exact surface form the dictionary engine consumed (e.g. "走った" not "走る").
+        // Pass result.matched here for precise bolding. A user manual highlight takes priority at the call site.
+        matched: String? = null,
     ): Cloze {
         if (sentence.isEmpty() || offset < 0 || expression.isEmpty()) {
             return Cloze(
@@ -385,7 +453,10 @@ object AnkiCardCreator {
         val safeOffset = offset.coerceIn(0, sentence.length)
         val prefix = sentence.substring(0, safeOffset)
 
-        val bodyEnd = (safeOffset + expression.length).coerceAtMost(sentence.length)
+        // Bold exactly as many characters as the dictionary matched (surface form length).
+        // Fall back to expression length if matched is unavailable.
+        val boldLen = (matched?.length ?: expression.length).coerceAtLeast(1)
+        val bodyEnd = (safeOffset + boldLen).coerceAtMost(sentence.length)
         val body = sentence.substring(safeOffset, bodyEnd)
 
         val suffix = sentence.substring(bodyEnd)
@@ -415,7 +486,16 @@ object AnkiCardCreator {
     // Marker rendering
     // =============================================================================
 
-    fun renderMarker(marker: String, result: LookupResult, cloze: Cloze? = null, media: MediaInfo? = null, screenshotFilename: String? = null): String = when (marker) {
+    fun renderMarker(
+        marker: String,
+        result: LookupResult,
+        cloze: Cloze? = null,
+        media: MediaInfo? = null,
+        screenshotFilename: String? = null,
+        wordAudioFilename: String? = null,
+        selectedDict: String? = null,
+        popupSelection: String? = null,
+    ): String = when (marker) {
         Marker.EXPRESSION -> escapeHtml(result.term.expression)
         Marker.READING -> escapeHtml(result.term.reading)
         Marker.FURIGANA -> buildFuriganaHtml(result.term.expression, result.term.reading)
@@ -447,12 +527,13 @@ object AnkiCardCreator {
         )
         Marker.GLOSSARY_PLAIN -> buildGlossaryPlain(result.term.glossaries, noDictTag = false)
         Marker.SENTENCE -> cloze?.let { escapeHtml(it.sentence) } ?: ""
+        Marker.SENTENCE_BOLD -> cloze?.let { "${escapeHtml(it.prefix)}<b>${escapeHtml(it.body)}</b>${escapeHtml(it.suffix)}" } ?: ""
         Marker.CLOZE_PREFIX -> cloze?.let { escapeHtml(it.prefix) } ?: ""
         Marker.CLOZE_BODY -> cloze?.let { escapeHtml(it.body) } ?: ""
         Marker.CLOZE_BODY_KANA -> cloze?.let { escapeHtml(it.bodyKana) } ?: ""
         Marker.CLOZE_SUFFIX -> cloze?.let { escapeHtml(it.suffix) } ?: ""
         Marker.TAGS -> buildTags(result)
-        Marker.PART_OF_SPEECH -> buildPartOfSpeech(result)
+        Marker.PART_OF_SPEECH -> ""
         Marker.CONJUGATION -> buildConjugation(result)
         Marker.DICTIONARY -> result.term.glossaries.firstOrNull()?.let { escapeHtml(it.dictName) } ?: ""
         Marker.DICTIONARY_ALIAS -> result.term.glossaries.firstOrNull()?.let { escapeHtml(it.dictName) } ?: ""
@@ -464,24 +545,29 @@ object AnkiCardCreator {
         Marker.PITCH_ACCENT_POSITIONS -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.POSITION)
         Marker.PITCH_ACCENT_CATEGORIES -> buildPitchCategories(result.term.reading, result.term.pitches)
         Marker.PITCH_ACCENT_COMPOSITE -> buildPitchAccents(result.term.reading, result.term.pitches, format = PitchFormat.COMPOSITE)
-        Marker.AUDIO -> ""
-        Marker.WORD_AUDIO -> ""
+        Marker.WORD_AUDIO -> wordAudioFilename?.let { "[sound:$it]" } ?: ""
         Marker.SENTENCE_AUDIO -> ""
         Marker.MORAE -> buildMorae(result.term.reading)
         Marker.PITCH_ACCENT_GRAPHS -> buildPitchAccentGraphs(result.term.reading, result.term.pitches)
         Marker.SCREENSHOT -> screenshotFilename?.let { "<img src=\"$it\">" } ?: ""
         Marker.SEARCH_QUERY -> escapeHtml(result.term.expression)
-        Marker.URL -> "" // TODO: Add to LookupResult
-        Marker.DOCUMENT_TITLE -> "" // TODO: Add to LookupResult
-        Marker.MANGA -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
+        Marker.URL -> ""
+        Marker.BOOK -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
         Marker.CHAPTER -> media?.chapterName?.let { escapeHtml(it) } ?: ""
         Marker.MEDIA -> {
-            if (media != null && media.mangaTitle.isNotBlank() && media.chapterName.isNotBlank()) {
-                "${escapeHtml(media.mangaTitle)}-${escapeHtml(media.chapterName)}"
+            if (media != null && media.mangaTitle.isNotBlank()) {
+                if (media.chapterName.isNotBlank()) {
+                    "${escapeHtml(media.mangaTitle)}-${escapeHtml(media.chapterName)}"
+                } else {
+                    escapeHtml(media.mangaTitle)
+                }
             } else {
                 ""
             }
         }
+        Marker.POPUP_SELECTION_TEXT -> popupSelection?.let { escapeHtml(it) } ?: ""
+        Marker.SELECTED_GLOSSARY -> buildGlossary(result.term.glossaries, brief = false, noDictTag = false, firstOnly = false, dictionaryFilter = selectedDict)
+        Marker.DOCUMENT_TITLE -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
         else -> parseSingleGlossaryMarker(marker, result)
     }
 
@@ -897,7 +983,7 @@ object AnkiCardCreator {
             g.definitionTags.split(" ").filter { it.isNotBlank() }.forEach { seen.add(it) }
             g.termTags.split(" ").filter { it.isNotBlank() }.forEach { seen.add(it) }
         }
-        return if (seen.isEmpty()) "Unknown" else seen.joinToString(", ") { escapeHtml(it) }
+        return seen.joinToString(", ") { escapeHtml(it) }
     }
 
     private val POS_PRETTY = mapOf(
@@ -1099,7 +1185,8 @@ object AnkiCardCreator {
 
         for (group in pitches) {
             for (pos in group.pitchPositions) {
-                categories.add(pitchPositionToCategory(pos, moraCount))
+                val cat = pitchPositionToCategory(pos, moraCount)
+                if (cat.isNotEmpty()) categories.add(cat)
             }
         }
         return categories.joinToString(",")
@@ -1110,7 +1197,7 @@ object AnkiCardCreator {
         position == 1 -> "atamadaka"
         position == moraCount -> "odaka"
         position > 1 -> "nakadaka"
-        else -> "unknown"
+        else -> ""
     }
 
     // =============================================================================

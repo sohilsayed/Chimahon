@@ -10,7 +10,10 @@
   const HOSHI_SCHEME = 'hoshi:';
   const MAX_SCAN_CHARS = 24;   // chars to extract forward from tap point
 
-
+  let _lastSelection = '';
+  let _selectedDictionaries = {}; // entryIndex -> dictName
+  let _wordAudioEnabled = true;
+  let _listenersInstalled = false;
   const HAS_NATIVE_SCOPE = (() => {
     try {
       if (!window.CSS || !CSS.supports) return false;
@@ -732,33 +735,31 @@
   const TAP_MOVE_THRESHOLD = 10;  // px — ignore if finger moved too far (scroll)
 
   function installTapListener() {
-    if (_lookupEnabled) return;
-    _lookupEnabled = true;
+    if (_listenersInstalled) return;
+    _listenersInstalled = true;
 
-    document.addEventListener('touchstart', (e) => {
-      const t = e.touches[0];
-      if (t) { _touchStartX = t.clientX; _touchStartY = t.clientY; }
-    }, {passive: true});
+    document.addEventListener('click', (e) => {
+      // If the user has an active text selection, don't trigger a lookup.
+      // This is a safety check, although 'click' shouldn't fire on long-press.
+      if (window.getSelection().toString().trim().length > 0) return;
 
-    document.addEventListener('touchend', (e) => {
-      // Ignore multi-touch
-      if (e.changedTouches.length !== 1) return;
-      const t = e.changedTouches[0];
-      const dx = Math.abs(t.clientX - _touchStartX);
-      const dy = Math.abs(t.clientY - _touchStartY);
-      if (dx > TAP_MOVE_THRESHOLD || dy > TAP_MOVE_THRESHOLD) return;
-
-      // Only trigger inside the entries area, not on interactive controls
+      // Skip interactive controls — buttons, dict tags, inflection toggles, etc.
       const target = e.target;
       if (!target) return;
-      if (target.closest('button, .anki-add-btn, .lookup-tab, .inflection-toggle')) return;
+      if (target.closest('button, .anki-add-btn, .lookup-tab, .inflection-toggle, .tag')) return;
 
-      const word = extractTextAtPoint(t.clientX, t.clientY);
+      const word = extractTextAtPoint(e.clientX, e.clientY);
       if (!word) return;
 
-      e.preventDefault();
       navigateTo('hoshi://lookup?q=' + encodeURIComponent(word));
     }, {passive: false});
+
+    document.addEventListener('selectionchange', () => {
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) {
+        _lastSelection = selection.toString();
+      }
+    });
   }
 
   function mediaCandidates(path) {
@@ -790,10 +791,30 @@
     return null;
   }
 
+  const POS_TAGS = new Set(['n', 'vs', 'vi', 'vt', 'adj-i', 'adj-na', 'adv', 'v1', 'v5k', 'v5s', 'v5m', 'v5n', 'v5r', 'v5t', 'exp', 'int']);
+  const ARCH_TAGS = new Set(['arch', 'obs', 'rare', 'ok', 'oK']);
+  const POPULAR_TAGS = new Set(['P', 'popular', 'frequent', 'common']);
+
+
+
+  function resolveTagCategory(label, defaultCategory) {
+    if (defaultCategory && defaultCategory !== 'default') return defaultCategory;
+    const t = label.toLowerCase();
+    if (t.includes('arch') || t.includes('obs') || t.includes('hist')) return 'archaism';
+    if (t.includes('P') || t.includes('popular')) return 'popular';
+    if (t.includes('freq')) return 'frequent';
+    if (t.includes('col') || t.includes('pol') || t.includes('hon') || t.includes('fam')) return 'style';
+    if (t.includes('dial')) return 'dialect';
+    if (t.includes('v5') || t.includes('v1') || t.includes('adj') || t.includes('n') || t.includes('adv')) return 'partOfSpeech';
+    return 'default';
+  }
+
   function createTag(label, category) {
+    const resolvedCategory = resolveTagCategory(label, category);
     const span = document.createElement('span');
     span.className = 'tag';
-    span.dataset.category = category;
+    span.dataset.category = resolvedCategory;
+    span.dataset.details = label;
 
     const inner = document.createElement('span');
     inner.className = 'tag-label';
@@ -809,9 +830,19 @@
 
   function createTagWithBody(label, body, category) {
     const span = createTag(label, category);
+    span.classList.add('tag-has-body');
+    // Round right of label when body follows
+    const labelEl = span.querySelector('.tag-label');
+    if (labelEl) {
+      labelEl.style.borderTopRightRadius = '0';
+      labelEl.style.borderBottomRightRadius = '0';
+    }
     const bodyNode = document.createElement('span');
     bodyNode.className = 'tag-body';
-    bodyNode.textContent = body;
+    const bodyContent = document.createElement('span');
+    bodyContent.className = 'tag-body-content';
+    bodyContent.textContent = body;
+    bodyNode.appendChild(bodyContent);
     span.appendChild(bodyNode);
     return span;
   }
@@ -1155,7 +1186,7 @@
 
     const units = typeof node.sizeUnits === 'string'
       ? node.sizeUnits
-      : (node.data && typeof node.data.sizeUnits === 'string' ? node.data.sizeUnits : 'em');
+      : (node.data && typeof node.data.sizeUnits === 'string' ? node.data.sizeUnits : 'px');
 
     const usedWidth = Number.isFinite(preferredWidth) && preferredWidth > 0
       ? preferredWidth
@@ -1173,6 +1204,14 @@
     link.dataset.imageRendering = imageRendering;
     link.dataset.appearance = typeof node.appearance === 'string' ? node.appearance : 'auto';
     link.dataset.background = String(node.background !== false);
+    
+    // Apply layout styles
+    link.style.width = `${usedWidth}${units}`;
+    link.style.maxWidth = '100%';
+    if (typeof node.verticalAlign === 'string') {
+      link.dataset.verticalAlign = node.verticalAlign;
+      link.style.verticalAlign = node.verticalAlign;
+    }
     if (typeof node.title === 'string') link.title = node.title;
 
     applyCommonStructuredAttributes(link, node);
@@ -1180,6 +1219,7 @@
     const container = document.createElement('span');
     container.className = 'gloss-image-container';
     container.style.width = `${trimFloat(usedWidth)}${units}`;
+    container.style.maxWidth = '100%';
     if (typeof node.border === 'string') container.style.border = node.border;
     if (typeof node.borderRadius === 'string') container.style.borderRadius = node.borderRadius;
 
@@ -1197,6 +1237,7 @@
     img.className = 'gloss-image gloss-sc-img';
     if (src) img.src = src;
     img.loading = 'lazy';
+    img.style.maxWidth = '100%';
     img.decoding = 'async';
     img.style.imageRendering = imageRendering;
     if (typeof node.title === 'string') img.alt = node.title;
@@ -1246,9 +1287,16 @@
     return segments;
   }
 
-  function createHeadwordNode(expression, reading) {
+  function createHeadwordNode(expression, reading, termTags) {
     const headword = document.createElement('span');
     headword.className = 'headword';
+    
+    const popularityClass = (() => {
+        const t = termTags ? termTags.toLowerCase() : '';
+        if (t.includes('popular') || t.includes(' p ')) return 'popular';
+        if (t.includes('rare') || t.includes('arch') || t.includes('obs')) return 'rare';
+        return '';
+    })();
 
     const segments = distributeFurigana(expression, reading);
 
@@ -1256,6 +1304,7 @@
       if (segment.reading) {
         const ruby = document.createElement('ruby');
         ruby.className = 'headword-text-container headword-term';
+        if (popularityClass) ruby.classList.add(popularityClass);
         ruby.textContent = segment.text;
 
         const rt = document.createElement('rt');
@@ -1267,9 +1316,19 @@
       } else {
         const termNode = document.createElement('span');
         termNode.className = 'headword-term';
+        if (popularityClass) termNode.classList.add(popularityClass);
         termNode.textContent = segment.text;
         headword.appendChild(termNode);
       }
+    }
+
+    if (termTags) {
+      const tagList = document.createElement('span');
+      tagList.className = 'headword-tag-list';
+      termTags.split(/\s+/).forEach(t => {
+        if (t) tagList.appendChild(createTag(t));
+      });
+      headword.appendChild(tagList);
     }
 
     return headword;
@@ -1280,9 +1339,9 @@
 
     const container = document.createElement('div');
     container.className = 'inflection-toggle';
-    container.style.cssText = 'font-size: 0.85em; opacity: 0.7; cursor: pointer; margin: 4px 0; user-select: none;';
 
     const toggle = document.createElement('span');
+    toggle.className = 'inflection-toggle-label';
     toggle.textContent = 'Deinflection ▸';
     container.appendChild(toggle);
 
@@ -1307,42 +1366,165 @@
     body.appendChild(container);
   }
 
-  function createDefinitionItem(glossary, mediaMap) {
-    const definitionItem = document.createElement('li');
-    definitionItem.className = 'definition-item';
-    const dictName = String(glossary.dictName || '');
-    definitionItem.dataset.dictionary = dictName;
-
-    const tags = document.createElement('div');
-    tags.className = 'definition-tag-list';
-
-    if (glossary.dictName) tags.appendChild(createTag(glossary.dictName, 'dictionary'));
-    if (glossary.definitionTags) {
-      String(glossary.definitionTags).split(',').map((s) => s.trim()).filter(Boolean)
-        .forEach((tag) => tags.appendChild(createTag(tag, 'default')));
-    }
-    definitionItem.appendChild(tags);
-
-    const glossContent = document.createElement('div');
-    glossContent.className = 'gloss-content';
-    glossContent.appendChild(buildGlossaryNode(String(glossary.glossary || ''), dictName, mediaMap));
-    definitionItem.appendChild(glossContent);
-
-    return definitionItem;
+  function createAudioButton(expression, reading) {
+    const audioBtn = document.createElement('button');
+    audioBtn.className = 'word-audio-btn';
+    audioBtn.textContent = '🔊';
+    audioBtn.title = 'Play Word Audio';
+    audioBtn.dataset.expression = expression;
+    audioBtn.dataset.reading = reading;
+    
+    audioBtn.onclick = (e) => {
+      e.stopPropagation();
+      if (typeof WordAudioBridge !== 'undefined') {
+        const callbackId = 'audio_' + Date.now();
+        audioBtn.classList.add('loading');
+        
+        window.DictionaryRenderer.onAudioResults = (id, results) => {
+          if (id !== callbackId) return;
+          audioBtn.classList.remove('loading');
+          
+          if (results && results.length > 0) {
+            WordAudioBridge.playAudio(results[0].url);
+          } else {
+            audioBtn.classList.add('error');
+            setTimeout(() => audioBtn.classList.remove('error'), 1000);
+          }
+        };
+        
+        WordAudioBridge.fetchAudio(expression, reading, callbackId);
+      }
+    };
+    return audioBtn;
   }
 
-  function appendDefinitionsSection(body, glossaries, mediaMap) {
-    const defSection = document.createElement('div');
-    defSection.className = 'entry-body-section';
-    const definitionList = document.createElement('ol');
-    definitionList.className = 'definition-list';
+  function appendDefinitionsSection(body, glossaries, mediaMap, group) {
+    if (!glossaries || glossaries.length === 0) return;
 
-    for (const glossary of glossaries) {
-      definitionList.appendChild(createDefinitionItem(glossary, mediaMap));
+    if (!group) {
+        // FLAT LIST (Ungrouped)
+        const defSection = document.createElement('div');
+        defSection.className = 'entry-body-section';
+        const ol = document.createElement('ol');
+        ol.className = 'definition-list';
+        ol.dataset.count = String(glossaries.length);
+        
+        glossaries.forEach(gloss => {
+            const li = document.createElement('li');
+            li.className = 'definition-item ungrouped-item';
+            
+            const content = document.createElement('div');
+            content.className = 'definition-item-content';
+            
+            const tagList = document.createElement('div');
+            tagList.className = 'definition-tag-list';
+            if (gloss.dictName) {
+              const dictTag = createTag(gloss.dictName, 'dictionary');
+              dictTag.style.cursor = 'pointer';
+              dictTag.onclick = (e) => {
+                e.stopPropagation();
+                const entryIdx = li.closest('article').dataset.index;
+                const current = _selectedDictionaries[entryIdx];
+                li.closest('article').querySelectorAll('.tag[data-category="dictionary"]').forEach(t => t.classList.remove('selected'));
+                if (current === gloss.dictName) {
+                  delete _selectedDictionaries[entryIdx];
+                } else {
+                  _selectedDictionaries[entryIdx] = gloss.dictName;
+                  dictTag.classList.add('selected');
+                }
+              };
+              tagList.appendChild(dictTag);
+            }
+            if (gloss.definitionTags) {
+                gloss.definitionTags.split(/\s+/).forEach(t => { if(t) tagList.appendChild(createTag(t)); });
+            }
+            content.appendChild(tagList);
+
+            const glossContainer = document.createElement('div');
+            glossContainer.className = 'gloss-content';
+            glossContainer.appendChild(buildGlossaryNode(String(gloss.glossary || ''), gloss.dictName, mediaMap));
+            content.appendChild(glossContainer);
+            li.appendChild(content);
+            ol.appendChild(li);
+        });
+        defSection.appendChild(ol);
+        body.appendChild(defSection);
+        return;
     }
 
-    defSection.appendChild(definitionList);
-    body.appendChild(defSection);
+    // GROUPED BY DICTIONARY
+    const groups = new Map();
+    glossaries.forEach((gloss) => {
+      const name = gloss.dictName || 'Unknown';
+      if (!groups.has(name)) groups.set(name, []);
+      groups.get(name).push(gloss);
+    });
+
+    for (const [dictName, dictGlossaries] of groups) {
+      const dictSection = document.createElement('div');
+      dictSection.className = 'entry-body-section dictionary-group';
+      dictSection.dataset.dictionary = dictName;
+
+      const dictHeader = document.createElement('div');
+      dictHeader.className = 'dictionary-header';
+      if (dictName) {
+        const dictTag = createTag(dictName, 'dictionary');
+        dictTag.style.cursor = 'pointer';
+        dictTag.onclick = (e) => {
+          e.stopPropagation();
+          const entryIdx = dictSection.closest('article').dataset.index;
+          const current = _selectedDictionaries[entryIdx];
+          dictSection.closest('article').querySelectorAll('.tag[data-category="dictionary"]').forEach(t => t.classList.remove('selected'));
+          if (current === dictName) {
+            delete _selectedDictionaries[entryIdx];
+          } else {
+            _selectedDictionaries[entryIdx] = dictName;
+            dictTag.classList.add('selected');
+          }
+        };
+        dictHeader.appendChild(dictTag);
+      }
+      
+      if (dictGlossaries[0].termTags) {
+        dictGlossaries[0].termTags.split(/\s+/).forEach(t => {
+          if (t) dictHeader.appendChild(createTag(t));
+        });
+      }
+      dictSection.appendChild(dictHeader);
+
+      const ol = document.createElement('ol');
+      ol.className = 'definition-list entry-body-section-content'; // Added alias for masonry CSS
+      ol.dataset.count = String(dictGlossaries.length);
+
+      dictGlossaries.forEach((gloss) => {
+        const li = document.createElement('li');
+        li.className = 'definition-item';
+        li.dataset.dictionary = dictName; // Added for colorizer compatibility
+        
+        const content = document.createElement('div');
+        content.className = 'definition-item-content';
+        
+        if (gloss.definitionTags) {
+          const tagList = document.createElement('div');
+          tagList.className = 'definition-tag-list';
+          gloss.definitionTags.split(/\s+/).forEach(t => {
+            if (t) tagList.appendChild(createTag(t));
+          });
+          content.appendChild(tagList);
+        }
+
+        const glossContainer = document.createElement('div');
+        glossContainer.className = 'gloss-content';
+        glossContainer.appendChild(buildGlossaryNode(String(gloss.glossary || ''), dictName, mediaMap));
+        content.appendChild(glossContainer);
+        
+        li.appendChild(content);
+        ol.appendChild(li);
+      });
+
+      dictSection.appendChild(ol);
+      body.appendChild(dictSection);
+    }
   }
 
   function appendFrequenciesSection(body, frequencies, showHarmonic) {
@@ -1350,6 +1532,7 @@
 
     const section = document.createElement('div');
     section.className = 'entry-body-section frequency-top-section';
+    section.dataset.sectionType = 'frequencies';
 
     // If showHarmonic is true, calculate and display harmonic mean instead of full list
     if (showHarmonic) {
@@ -1399,6 +1582,7 @@
       }
 
       const chip = createTagWithBody(dictName, values.join(', '), 'frequency');
+      chip.classList.add('frequency-group-item');
       section.appendChild(chip);
     }
 
@@ -1409,159 +1593,330 @@
 
 
 
+  // ── Pitch accent helpers (exact port of Yomitan's japanese.js) ───────────
+
+  // Exact small-kana set from japanese.js — Set lookup is faster than RegExp
+  // and this matches the canonical source character-for-character.
+  const SMALL_KANA_SET = new Set('ぁぃぅぇぉゃゅょゎァィゥェォャュョヮ');
+
+  // DIACRITIC_MAPPING — built from the same kana triplet string used in
+  // japanese.js.  Each triplet is: base, dakuten-form, handakuten-form ('-' = none).
+  // Maps voiced/semi-voiced kana → {character (unvoiced base), type}.
+  const _kana = 'うゔ-かが-きぎ-くぐ-けげ-こご-さざ-しじ-すず-せぜ-そぞ-ただ-ちぢ-つづ-てで-とど-はばぱひびぴふぶぷへべぺほぼぽワヷ-ヰヸ-ウヴ-ヱヹ-ヲヺ-カガ-キギ-クグ-ケゲ-コゴ-サザ-シジ-スズ-セゼ-ソゾ-タダ-チヂ-ツヅ-テデ-トド-ハバパヒビピフブプヘベペホボポ';
+  const DIACRITIC_MAPPING = new Map();
+  for (let _i = 0, _ii = _kana.length; _i < _ii; _i += 3) {
+    const _base     = _kana[_i];
+    const _dakuten  = _kana[_i + 1];
+    const _handakuten = _kana[_i + 2];
+    DIACRITIC_MAPPING.set(_dakuten,   {character: _base, type: 'dakuten'});
+    if (_handakuten !== '-') {
+      DIACRITIC_MAPPING.set(_handakuten, {character: _base, type: 'handakuten'});
+    }
+  }
+
+  /**
+   * getKanaMorae — exact port of japanese.js getKanaMorae.
+   * Uses SMALL_KANA_SET (a Set) instead of a RegExp for correctness and speed.
+   * @param {string} text
+   * @returns {string[]}
+   */
   function getMorae(text) {
     const morae = [];
-    const smallKana = /[\u3041\u3043\u3045\u3047\u3049\u3063\u3081\u3083\u3085\u3087\u308e\u30a1\u30a3\u30a5\u30a7\u30a9\u30c3\u30e1\u30e3\u30e5\u30e7\u30ee\u30f5\u30f6]/;
-    for (const char of text) {
-      if (morae.length > 0 && smallKana.test(char)) {
-        morae[morae.length - 1] += char;
+    let i;
+    for (const c of text) {
+      if (SMALL_KANA_SET.has(c) && (i = morae.length) > 0) {
+        morae[i - 1] += c;
       } else {
-        morae.push(char);
+        morae.push(c);
       }
     }
     return morae;
   }
 
-  function createPitchDiagram(morae, pitchPos) {
-    const p = pitchPos;
-    const n = morae.length;
+  /**
+   * isMoraPitchHigh — exact port of japanese.js isMoraPitchHigh.
+   * String pitch values: index into the H/L string directly, no clamping
+   * (out-of-bounds → undefined !== 'H' → false, matching JS source behaviour).
+   * @param {number} moraIndex
+   * @param {number|string} pitchAccentValue
+   * @returns {boolean}
+   */
+  function isMoraPitchHigh(moraIndex, pitchAccentValue) {
+    if (typeof pitchAccentValue === 'string') {
+      return pitchAccentValue[moraIndex] === 'H';
+    }
+    switch (pitchAccentValue) {
+      case 0:  return (moraIndex > 0);
+      case 1:  return (moraIndex < 1);
+      default: return (moraIndex > 0 && moraIndex < pitchAccentValue);
+    }
+  }
+
+  /**
+   * getKanaDiacriticInfo — exact port of japanese.js getKanaDiacriticInfo.
+   * Returns {character, type} for voiced/semi-voiced kana, null otherwise.
+   * The `type` field ('dakuten' | 'handakuten') is included for full parity
+   * even though the nasal indicator only uses `character`.
+   * @param {string} character
+   * @returns {{character: string, type: string}|null}
+   */
+  function getKanaDiacriticInfo(character) {
+    const info = DIACRITIC_MAPPING.get(character);
+    return typeof info !== 'undefined' ? {character: info.character, type: info.type} : null;
+  }
+
+  // ── SVG graph (Yomitan createPronunciationGraph parity) ──────────────────
+
+  function _graphCircle(className, x, y, r) {
+    const c = document.createElementNS(SVG_NAMESPACE, 'circle');
+    c.setAttribute('class', className);
+    c.setAttribute('cx', String(x));
+    c.setAttribute('cy', String(y));
+    c.setAttribute('r', String(r));
+    return c;
+  }
+
+  /**
+   * Exact port of PronunciationGenerator.createPronunciationGraph.
+   * viewBox: 0 0 (50*(n+1)) 100  — dots at y=25 (high) or y=75 (low).
+   */
+  function createPitchDiagram(morae, pitchPositions) {
+    const ii = morae.length;
     const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
-    svg.classList.add('pronunciation-graph');
-    
-    // Each mora is ~25 units wide in our SVG coordinate system
-    const moraWidth = 30;
-    const height = 50;
-    const padding = 10;
-    const totalWidth = n * moraWidth + padding * 2;
-    
-    svg.setAttribute('viewBox', `0 0 ${totalWidth} ${height}`);
-    svg.setAttribute('preserveAspectRatio', 'xMinYMid meet');
-    svg.style.width = `${totalWidth / 10}em`;
+    svg.setAttribute('xmlns', SVG_NAMESPACE);
+    svg.setAttribute('class', 'pronunciation-graph');
+    svg.setAttribute('focusable', 'false');
+    svg.setAttribute('viewBox', `0 0 ${50 * (ii + 1)} 100`);
 
-    const points = [];
-    for (let i = 0; i < n; i++) {
-        let isHigh = false;
-        if (p === 0) { // Heiban
-            isHigh = (i > 0);
-        } else if (p === 1) { // Atamadaka
-            isHigh = (i === 0);
-        } else { // Nakadaka / Odaka
-            isHigh = (i > 0 && i < p);
-        }
-        points.push({
-            x: padding + i * moraWidth + moraWidth / 2,
-            y: isHigh ? 15 : 35
-        });
+    if (ii <= 0) return svg;
+
+    // Two paths appended first so dots render on top (matches Yomitan order).
+    const path1 = document.createElementNS(SVG_NAMESPACE, 'path');
+    svg.appendChild(path1);
+    const path2 = document.createElementNS(SVG_NAMESPACE, 'path');
+    svg.appendChild(path2);
+
+    const pathPoints = [];
+    for (let i = 0; i < ii; i++) {
+      const highPitch     = isMoraPitchHigh(i,     pitchPositions);
+      const highPitchNext = isMoraPitchHigh(i + 1, pitchPositions);
+      const x = i * 50 + 25;
+      const y = highPitch ? 25 : 75;
+
+      if (highPitch && !highPitchNext) {
+        // Downstep dot: outer ring + inner filled circle
+        svg.appendChild(_graphCircle('pronunciation-graph-dot-downstep1', x, y, 15));
+        svg.appendChild(_graphCircle('pronunciation-graph-dot-downstep2', x, y, 5));
+      } else {
+        svg.appendChild(_graphCircle('pronunciation-graph-dot', x, y, 15));
+      }
+      pathPoints.push(`${x} ${y}`);
     }
 
-    // Draw lines
-    if (points.length > 1) {
-        const path = document.createElementNS(SVG_NAMESPACE, 'path');
-        path.classList.add('pronunciation-graph-line');
-        let d = `M ${points[0].x} ${points[0].y}`;
-        for (let i = 1; i < n; i++) {
-            // Step connector
-            if (points[i].y !== points[i-1].y) {
-                 d += ` L ${points[i].x - moraWidth/2} ${points[i-1].y} L ${points[i].x - moraWidth/2} ${points[i].y}`;
-            }
-            d += ` L ${points[i].x} ${points[i].y}`;
-        }
-        
-        // Add tail for Odaka (p === n) or Heiban (p === 0)
-        if (p === 0 || p === n) {
-             const tailX = points[n-1].x + moraWidth / 2;
-             const tailY = (p === 0) ? points[n-1].y : 35;
-             d += ` L ${tailX} ${points[n-1].y}`;
-             if (points[n-1].y !== tailY) {
-                 d += ` L ${tailX} ${tailY}`;
-             }
-             d += ` L ${tailX + 10} ${tailY}`;
-        }
+    path1.setAttribute('class', 'pronunciation-graph-line');
+    path1.setAttribute('d', `M${pathPoints.join(' L')}`);
 
-        path.setAttribute('d', d);
-        svg.appendChild(path);
+    // Tail segment from last mora to the "next mora" position
+    pathPoints.splice(0, ii - 1);
+    {
+      const highPitch = isMoraPitchHigh(ii, pitchPositions);
+      const x = ii * 50 + 25;
+      const y = highPitch ? 25 : 75;
+      // Triangle marker at tail end
+      const tri = document.createElementNS(SVG_NAMESPACE, 'path');
+      tri.setAttribute('class', 'pronunciation-graph-triangle');
+      tri.setAttribute('d', 'M0 13 L15 -13 L-15 -13 Z');
+      tri.setAttribute('transform', `translate(${x},${y})`);
+      svg.appendChild(tri);
+      pathPoints.push(`${x} ${y}`);
     }
 
-    // Draw dots
-    points.forEach((pt, i) => {
-        const circle = document.createElementNS(SVG_NAMESPACE, 'circle');
-        circle.classList.add('pronunciation-graph-dot');
-        circle.setAttribute('cx', pt.x);
-        circle.setAttribute('cy', pt.y);
-        circle.setAttribute('r', 4);
-        svg.appendChild(circle);
-    });
+    path2.setAttribute('class', 'pronunciation-graph-line-tail');
+    path2.setAttribute('d', `M${pathPoints.join(' L')}`);
 
     return svg;
   }
 
-  function createPitchTextLine(morae, pitchPos) {
+  // ── Downstep notation [N] span (Yomitan createPronunciationDownstepPosition) ─
+
+  function createDownstepNotation(pitchPositions) {
+    const pos = String(pitchPositions);
+    const n1 = document.createElement('span');
+    n1.className = 'pronunciation-downstep-notation';
+    n1.dataset.downstepPosition = pos;
+
+    let n2 = document.createElement('span');
+    n2.className = 'pronunciation-downstep-notation-prefix';
+    n2.textContent = '[';
+    n1.appendChild(n2);
+
+    n2 = document.createElement('span');
+    n2.className = 'pronunciation-downstep-notation-number';
+    n2.textContent = pos;
+    n1.appendChild(n2);
+
+    n2 = document.createElement('span');
+    n2.className = 'pronunciation-downstep-notation-suffix';
+    n2.textContent = ']';
+    n1.appendChild(n2);
+
+    return n1;
+  }
+
+  // ── Mora text line (Yomitan createPronunciationText parity) ──────────────
+
+  /**
+   * Full port of PronunciationGenerator.createPronunciationText.
+   * Supports nasalPositions and devoicePositions arrays (1-based, matching
+   * Yomitan's convention where position 1 = first mora).
+   * Each mora gets:
+   *   - data-position, data-pitch, data-pitchNext on the .pronunciation-mora span
+   *   - one .pronunciation-character span per character in the mora
+   *   - optional .pronunciation-devoice-indicator span (devoiced morae)
+   *   - optional .pronunciation-nasal-indicator + .pronunciation-nasal-diacritic
+   *     wrapped in a .pronunciation-character-group (nasal morae)
+   *   - .pronunciation-mora-line span (always last child, styled via CSS)
+   */
+  function createPitchTextLine(morae, pitchPositions, nasalPositions, devoicePositions) {
+    const nasalSet   = (nasalPositions   && nasalPositions.length   > 0) ? new Set(nasalPositions)   : null;
+    const devoiceSet = (devoicePositions && devoicePositions.length > 0) ? new Set(devoicePositions) : null;
+
     const container = document.createElement('span');
     container.className = 'pronunciation-text';
-    const p = pitchPos;
-    
-    morae.forEach((mora, i) => {
-        const span = document.createElement('span');
-        span.className = 'pronunciation-mora';
-        span.textContent = mora;
-        
-        let isHigh = false;
-        let nextIsLow = false;
 
-        if (p === 0) { // Heiban (0)
-            isHigh = (i > 0);
-        } else if (p === 1) { // Atamadaka (1)
-            isHigh = (i === 0);
-            if (i === 0) nextIsLow = true;
-        } else { // Nakadaka / Odaka
-            isHigh = (i > 0 && i < p);
-            if (i === p - 1) nextIsLow = true;
+    for (let i = 0, ii = morae.length; i < ii; i++) {
+      const i1 = i + 1; // 1-based position used by Yomitan for nasal/devoice sets
+      const mora = morae[i];
+      const highPitch     = isMoraPitchHigh(i,  pitchPositions);
+      const highPitchNext = isMoraPitchHigh(i1, pitchPositions);
+      const isNasal   = nasalSet   !== null && nasalSet.has(i1);
+      const isDevoice = devoiceSet !== null && devoiceSet.has(i1);
+
+      const moraSpan = document.createElement('span');
+      moraSpan.className = 'pronunciation-mora';
+      moraSpan.dataset.position = String(i);
+      moraSpan.dataset.pitch     = highPitch     ? 'high' : 'low';
+      moraSpan.dataset.pitchNext = highPitchNext ? 'high' : 'low';
+
+      // One .pronunciation-character span per character in the mora
+      const characterNodes = [];
+      for (const ch of mora) {
+        const charSpan = document.createElement('span');
+        charSpan.className = 'pronunciation-character';
+        charSpan.textContent = ch;
+        moraSpan.appendChild(charSpan);
+        characterNodes.push(charSpan);
+      }
+
+      // Devoice indicator — a dotted circle overlaid on the mora
+      if (isDevoice) {
+        moraSpan.dataset.devoice = 'true';
+        const indicator = document.createElement('span');
+        indicator.className = 'pronunciation-devoice-indicator';
+        moraSpan.appendChild(indicator);
+      }
+
+      // Nasal indicator — replaces voiced kana with unvoiced base, adds
+      // a hidden combining handakuten span + a visible small circle indicator,
+      // all wrapped in a .pronunciation-character-group around the first char.
+      if (isNasal && characterNodes.length > 0) {
+        moraSpan.dataset.nasal = 'true';
+
+        const group = document.createElement('span');
+        group.className = 'pronunciation-character-group';
+
+        const firstCharNode = characterNodes[0];
+        const originalChar = firstCharNode.textContent;
+        const diacriticInfo = getKanaDiacriticInfo(originalChar);
+        if (diacriticInfo !== null) {
+          moraSpan.dataset.originalText = mora;
+          firstCharNode.dataset.originalText = originalChar;
+          firstCharNode.textContent = diacriticInfo.character;
         }
 
-        if (isHigh) {
-            span.dataset.pitch = 'high';
-            const line = document.createElement('span');
-            line.className = 'pronunciation-mora-line';
-            span.appendChild(line);
-        }
-        if (nextIsLow) {
-            span.dataset.pitchNext = 'low';
-        }
-        
-        container.appendChild(span);
-    });
-    
+        // Hidden combining handakuten (゜) — preserves copy-paste output
+        const diacritic = document.createElement('span');
+        diacritic.className = 'pronunciation-nasal-diacritic';
+        diacritic.textContent = '\u309a';
+        group.appendChild(diacritic);
+
+        // Visible indicator dot
+        const indicator = document.createElement('span');
+        indicator.className = 'pronunciation-nasal-indicator';
+        group.appendChild(indicator);
+
+        // Replace firstCharNode in the mora span with the group, then
+        // insert the character back as the first child of the group.
+        firstCharNode.parentNode.replaceChild(group, firstCharNode);
+        group.insertBefore(firstCharNode, group.firstChild);
+      }
+
+      // Pitch line — always the last child, displayed/hidden via CSS
+      const line = document.createElement('span');
+      line.className = 'pronunciation-mora-line';
+      moraSpan.appendChild(line);
+
+      container.appendChild(moraSpan);
+    }
+
     return container;
   }
 
+  // ── Pitches section ───────────────────────────────────────────────────────
+
+  /**
+   * pitches array entries now support:
+   *   group.nasalPositions   — number[] (1-based mora indices), optional
+   *   group.devoicePositions — number[] (1-based mora indices), optional
+   *
+   * The downstep notation span is always emitted (hidden by default via CSS,
+   * shown when custom dictionary CSS targets .pronunciation-downstep-notation).
+   */
   function appendPitchesSection(body, pitches, reading, showDiagram, showNumber, showText) {
     if (pitches.length === 0 || (!showDiagram && !showNumber && !showText)) return;
 
     const section = document.createElement('div');
     section.className = 'entry-body-section pitches-section';
+    section.dataset.sectionType = 'pronunciations';
+
+    const groupList = document.createElement('ul');
+    groupList.className = 'pronunciation-group-list';
+    groupList.style.listStyle = 'none';
+    groupList.style.padding = '0';
+    groupList.style.margin = '0';
+    section.appendChild(groupList);
 
     for (const group of pitches) {
-      const dictName = String(group.dictName || '');
-      const positions = Array.isArray(group.pitchPositions) ? group.pitchPositions : [];
+      const dictName       = String(group.dictName || '');
+      const positions      = Array.isArray(group.pitchPositions)    ? group.pitchPositions    : [];
+      const nasalPos       = Array.isArray(group.nasalPositions)     ? group.nasalPositions     : [];
+      const devoicePos     = Array.isArray(group.devoicePositions)   ? group.devoicePositions   : [];
       if (positions.length === 0) continue;
 
-      const groupContainer = document.createElement('div');
+      const groupContainer = document.createElement('li');
       groupContainer.className = 'pitch-entry';
-      
+
       const tag = document.createElement('div');
-      tag.className = 'pitch-group-tag';
+      tag.className = 'pitch-group-tag pronunciation-group-tag-list';
       tag.textContent = dictName;
       groupContainer.appendChild(tag);
-      
+
       const morae = getMorae(reading || '');
 
-      positions.forEach(pos => {
+      for (const pos of positions) {
         const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.alignItems = 'center';
-        row.style.gap = '0.5em';
-        row.style.flexWrap = 'wrap';
+        row.style.cssText = 'display:flex;align-items:center;gap:0.5em;flex-wrap:wrap';
 
+        // [N] downstep notation — always emitted for CSS parity; showNumber
+        // controls whether we also emit the legacy .pitch-number span.
+        const downstepSpan = createDownstepNotation(pos);
+        // Mirror Yomitan: place downstep notation inside a container div
+        const downstepContainer = document.createElement('span');
+        downstepContainer.className = 'pronunciation-downstep-notation-container';
+        downstepContainer.appendChild(downstepSpan);
+        row.appendChild(downstepContainer);
+
+        // Legacy numeric badge (shown when showNumber is true)
         if (showNumber) {
           const num = document.createElement('span');
           num.className = 'pitch-number';
@@ -1574,13 +1929,13 @@
         }
 
         if (showText && morae.length > 0) {
-          row.appendChild(createPitchTextLine(morae, pos));
+          row.appendChild(createPitchTextLine(morae, pos, nasalPos, devoicePos));
         }
 
         groupContainer.appendChild(row);
-      });
+      }
 
-      section.appendChild(groupContainer);
+      groupList.appendChild(groupContainer);
     }
 
     if (section.childElementCount > 0) {
@@ -1588,7 +1943,7 @@
     }
   }
 
-  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText) {
+  function renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, groupTerms) {
     const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const article = document.createElement('article');
     article.className = 'entry';
@@ -1609,7 +1964,8 @@
 
     const headSection = document.createElement('div');
     headSection.className = 'entry-body-section entry-headword-row';
-    headSection.appendChild(createHeadwordNode(expression, reading));
+    const termTags = result.term ? result.term.termTags : '';
+    headSection.appendChild(createHeadwordNode(expression, reading, termTags));
 
     if (ankiEnabled) {
       // Anki add button
@@ -1625,10 +1981,18 @@
       ankiBtn.onclick = (e) => {
         e.stopPropagation();
         if (typeof AnkiBridge !== 'undefined') {
-          AnkiBridge.addToAnki(ankiBtn.getAttribute('data-index'), '-1');
+          const entryIdx = ankiBtn.getAttribute('data-index');
+          const selectedDict = _selectedDictionaries[entryIdx] || '';
+          // Fallback to live selection if stored one is empty
+          const selection = _lastSelection || window.getSelection().toString();
+          AnkiBridge.addToAnki(entryIdx, '-1', selectedDict, selection);
         }
       };
       headSection.appendChild(ankiBtn);
+    }
+    
+    if (_wordAudioEnabled) {
+      headSection.appendChild(createAudioButton(expression, reading));
     }
 
     body.appendChild(headSection);
@@ -1644,83 +2008,25 @@
     appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
 
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
-    appendDefinitionsSection(body, glossaries, mediaMap);
+    appendDefinitionsSection(body, glossaries, mediaMap, groupTerms);
 
     return article;
   }
 
   function renderSplitEntries(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText) {
-    const existingSet = Array.isArray(existingExpressions) ? existingExpressions : [];
     const glossaries = (result.term && Array.isArray(result.term.glossaries)) ? result.term.glossaries : [];
-    const expression = (result.term && result.term.expression) || result.matched || '';
-    const reading = result.term && result.term.reading ? result.term.reading : '';
-    const frequencies = result.term && Array.isArray(result.term.frequencies) ? result.term.frequencies : [];
-    const pitches = result.term && Array.isArray(result.term.pitches) ? result.term.pitches : [];
-    const rules = result.term && result.term.rules ? result.term.rules : '';
-    const process = Array.isArray(result.process) ? result.process.join(' -> ') : '';
-
     if (glossaries.length === 0) {
-      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText)];
+      return [renderEntry(result, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false)];
     }
 
-    const articles = [];
-    for (let i = 0; i < glossaries.length; i++) {
-      const glossary = glossaries[i];
-      const article = document.createElement('article');
-      article.className = 'entry';
-      article.dataset.index = String(result.index || 0);
-      article.dataset.dictionary = glossary.dictName || '';
-
-      const body = document.createElement('div');
-      body.className = 'entry-body';
-      article.appendChild(body);
-
-      const headSection = document.createElement('div');
-      headSection.className = 'entry-body-section entry-headword-row';
-      headSection.appendChild(createHeadwordNode(expression, reading));
-
-      if (ankiEnabled) {
-        const ankiBtn = document.createElement('button');
-        const isAlreadyAdded = existingSet.includes(expression);
-        ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
-        ankiBtn.textContent = '+';
-        ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
-        ankiBtn.setAttribute('data-index', String(result.index || 0));
-        ankiBtn.setAttribute('data-expression', expression);
-        ankiBtn.setAttribute('data-glossary', String(i));
-        ankiBtn.onclick = (e) => {
-          e.stopPropagation();
-          if (typeof AnkiBridge !== 'undefined') {
-            AnkiBridge.addToAnki(
-              ankiBtn.getAttribute('data-index'),
-              ankiBtn.getAttribute('data-glossary')
-            );
-          }
-        };
-        headSection.appendChild(ankiBtn);
-      }
-      body.appendChild(headSection);
-
-      appendFrequenciesSection(body, frequencies, showFrequencyHarmonic);
-      if (i === 0) {
-        appendInflectionSection(body, rules, process);
-      }
-      appendPitchesSection(body, pitches, reading, showPitchDiagram, showPitchNumber, showPitchText);
-
-      const defSection = document.createElement('div');
-      defSection.className = 'entry-body-section';
-      const definitionList = document.createElement('ol');
-      definitionList.className = 'definition-list';
-      definitionList.appendChild(createDefinitionItem(glossary, mediaMap));
-      defSection.appendChild(definitionList);
-      body.appendChild(defSection);
-
-
-
-      articles.push(article);
-    }
-
-    return articles;
+    return glossaries.map((gloss) => {
+      const splitResult = Object.assign({}, result, {
+        term: Object.assign({}, result.term, {
+          glossaries: [gloss]
+        })
+      });
+      return renderEntry(splitResult, mediaMap, showFrequencyHarmonic, existingExpressions, ankiEnabled, showPitchDiagram, showPitchNumber, showPitchText, false);
+    });
   }
 
   function renderHeader(text) {
@@ -1749,6 +2055,7 @@
     const started = performance.now();
     const root = document.documentElement;
     root.setAttribute('data-theme', payload.isDark ? 'dark' : 'light');
+    _wordAudioEnabled = payload.wordAudioEnabled !== false;
 
     debugLog('render.start', {
       isDark: !!payload.isDark,
@@ -1837,63 +2144,30 @@
         const number = payload.showPitchNumber !== false;
         const text = payload.showPitchText !== false;
         if (groupTerms) {
-          fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text));
+          fragment.appendChild(renderEntry(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text, groupTerms));
         } else {
           const articles = renderSplitEntries(result, mediaMap, payload.showFrequencyHarmonic, existingExpressions, payload.ankiEnabled, diagram, number, text);
           articles.forEach(a => fragment.appendChild(a));
         }
       }
       container.appendChild(fragment);
+
+      if (payload.wordAudioAutoplay) {
+        const firstBtn = container.querySelector('.word-audio-btn');
+        if (firstBtn) firstBtn.click();
+      }
     }
 
     const elapsed = Math.round(performance.now() - started);
     console.log('[DictionaryRenderJS] render_ms=', elapsed, 'results=', results.length);
-  }
-
-  window.DictionaryRenderer = {
-  render,
-  renderHeader,
-
-  renderFromBase64(base64) {
-    const json = decodeBase64Utf8(base64);
-    const payload = JSON.parse(json);
-    render(payload);
-  },
-  
-  renderFromBridge() {
-    try {
-      const json = PayloadBridge.getJson();
-      console.log('[DictionaryRenderJS] renderFromBridge: json length=' + (json ? json.length : 'null/undefined'));
-      if (!json) {
-        console.error('[DictionaryRenderJS] Bridge returned empty or null');
-        return;
-      }
-      const payload = JSON.parse(json);
-      console.log('[DictionaryRenderJS] renderFromBridge: parsed payload, results=' + (payload.results ? payload.results.length : 0));
-      render(payload);
-    } catch (e) {
-      console.error('[DictionaryRenderJS] renderFromBridge error:', e.message);
-    }
-  },
-
-  /** Called by Kotlin to update the tab bar in-place (without full re-render). */
-  updateTabs(tabsJson) {
-    try {
-      const tabs = JSON.parse(tabsJson);
-      renderTabBar(tabs);
-    } catch (e) {
-      console.error('[DictionaryRenderJS] updateTabs error:', e.message);
-    }
-  },
-
-  /** Enable or disable the word-tap-to-lookup gesture. */
-  setRecursiveLookupEnabled(enabled) {
-    if (enabled) {
+    
+    // Ensure recursive lookup tap listener is installed if enabled
+    if (_lookupEnabled) {
       installTapListener();
     }
-  },
-  
-  clear() {
+  }
+
+  function clear() {
     const container = document.getElementById('entries');
     if (container) container.textContent = '';
     _tabsEl = null;
@@ -1904,6 +2178,44 @@
       delete styleNode.dataset.cacheKey;
     }
   }
-};
+
+  window.DictionaryRenderer = {
+    render,
+    renderHeader,
+    clear,
+
+    renderFromBase64(base64) {
+      const json = decodeBase64Utf8(base64);
+      const payload = JSON.parse(json);
+      render(payload);
+    },
+
+    renderFromBridge() {
+      try {
+        const json = PayloadBridge.getJson();
+        if (!json) return;
+        const payload = JSON.parse(json);
+        render(payload);
+      } catch (e) {
+        console.error('[DictionaryRenderJS] renderFromBridge error:', e.message);
+      }
+    },
+
+    updateTabs(tabsJson) {
+      try {
+        const tabs = JSON.parse(tabsJson);
+        renderTabBar(tabs);
+      } catch (e) {
+        console.error('[DictionaryRenderJS] updateTabs error:', e.message);
+      }
+    },
+
+    setRecursiveLookupEnabled(enabled) {
+      _lookupEnabled = enabled;
+      if (enabled) installTapListener();
+    },
+
+    onAudioResults: (id, results) => { /* overriden by UI */ }
+  };
 })();
 

@@ -70,6 +70,9 @@ class SyncPreferences(
             readEntries = preferenceStore.getBoolean("readEntries", true).get(),
             savedSearchesFeeds = preferenceStore.getBoolean("savedSearchesFeeds", true).get(),
             // SY <--
+            // Chimahon -->
+            novels = preferenceStore.getBoolean("sync_novels", true).get(),
+            // Chimahon <--
         )
     }
 
@@ -89,6 +92,9 @@ class SyncPreferences(
         preferenceStore.getBoolean("readEntries", true).set(syncSettings.readEntries)
         preferenceStore.getBoolean("savedSearchesFeeds", true).set(syncSettings.savedSearchesFeeds)
         // SY <--
+        // Chimahon -->
+        preferenceStore.getBoolean("sync_novels", true).set(syncSettings.novels)
+        // Chimahon <--
     }
 
     fun getSyncTriggerOptions(): SyncTriggerOptions {

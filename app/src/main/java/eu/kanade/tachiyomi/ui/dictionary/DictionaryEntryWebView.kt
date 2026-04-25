@@ -19,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import chimahon.DictionaryStyle
@@ -28,6 +29,12 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import java.io.StringWriter
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import chimahon.audio.WordAudioService
+import chimahon.audio.WordAudioResult
+import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 
 private const val ANKI_SCHEME = "anki"
 private const val ANKI_PATH_ADD = "add"
@@ -58,26 +65,33 @@ fun DictionaryEntryWebView(
     showPitchNumber: Boolean = true,
     showPitchText: Boolean = true,
     recursiveNavMode: String = "tabs",
+    wordAudioEnabled: Boolean = true,
+    customCss: String = "",
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
-    onAnkiLookup: ((Int, Int?) -> Unit)? = null,
+    onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = null,
     onRecursiveLookup: ((String) -> Unit)? = null,
     onTabSelect: ((Int) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
 ) {
-    val isDark = isSystemInDarkTheme()
-    val context = LocalContext.current
-
     val colorScheme = MaterialTheme.colorScheme
+    val isDark = colorScheme.surface.luminance() < 0.5f
+    val context = LocalContext.current
     val accentHex = "#%06X".format(0xFFFFFF and colorScheme.primary.toArgb())
     val onAccentHex = "#%06X".format(0xFFFFFF and colorScheme.onPrimary.toArgb())
     val fgHex = "#%06X".format(0xFFFFFF and colorScheme.onSurface.toArgb())
     val bgHex = "#%06X".format(0xFFFFFF and colorScheme.surface.toArgb())
     val borderHex = "#%06X".format(0xFFFFFF and colorScheme.outline.toArgb())
 
-    val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode) {
+    val payload = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode, wordAudioEnabled) {
         val buildStart = SystemClock.elapsedRealtime()
-        val result = buildRenderPayload(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, existingExpressions, tabs, recursiveNavMode)
+        val prefs = Injekt.get<DictionaryPreferences>()
+        val result = buildRenderPayload(
+            context, results, styles, mediaDataUris, placeholder, isDark,
+            showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
+            prefs.wordAudioAutoplay().get(), activeProfile, existingExpressions, tabs, recursiveNavMode,
+            wordAudioEnabled = wordAudioEnabled,
+        )
         Log.i(
             "DictionaryRender",
             "payload_build_ms=${SystemClock.elapsedRealtime() - buildStart} results=${results.size} tabs=${tabs.size}",
@@ -90,7 +104,7 @@ fun DictionaryEntryWebView(
             val webView = webViewProvider?.invoke(ctx) ?: WebView(ctx)
 
             if (webView.tag == null) {
-                val state = DictionaryWebViewState()
+                val state = DictionaryWebViewState(ctx, webViewProvider = { webView })
                 webView.apply {
                     setBackgroundColor(0x00000000)
                     settings.javaScriptEnabled = true
@@ -100,6 +114,8 @@ fun DictionaryEntryWebView(
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
                     settings.cacheMode = WebSettings.LOAD_NO_CACHE
+                    settings.setSupportZoom(true)
+                    settings.displayZoomControls = false
                     isVerticalScrollBarEnabled = false
                     isHorizontalScrollBarEnabled = false
 
@@ -107,6 +123,7 @@ fun DictionaryEntryWebView(
 
                     // Payload bridge for efficient data transfer
                     addJavascriptInterface(state.bridge, "PayloadBridge")
+                    addJavascriptInterface(state.wordAudioBridge, "WordAudioBridge")
 
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(
@@ -141,8 +158,11 @@ fun DictionaryEntryWebView(
                             if (url.scheme == ANKI_SCHEME && url.host == ANKI_PATH_ADD) {
                                 val index = url.getQueryParameter("index")?.toIntOrNull()
                                 val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
+                                val selectedDict = url.getQueryParameter("selected_dict")
+                                val popupSelection = url.getQueryParameter("popup_selection")
                                 if (index != null && index >= 0) {
-                                    s?.onAnkiLookup?.invoke(index, glossary)
+                                    android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: index=$index, glossary=$glossary, selectedDict=$selectedDict, popupSelection=$popupSelection")
+                                    s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection)
                                 }
                                 return true // Consumed
                             }
@@ -157,10 +177,16 @@ fun DictionaryEntryWebView(
                             view.evaluateJavascript(
                                 """
                                 window.AnkiBridge = {
-                                    addToAnki: function(index, glossary) {
+                                    addToAnki: function(index, glossary, selectedDict, popupSelection) {
                                         var url = "anki://add?index=" + index;
                                         if (glossary !== undefined && glossary !== null) {
                                             url += "&glossary=" + glossary;
+                                        }
+                                        if (selectedDict) {
+                                            url += "&selected_dict=" + encodeURIComponent(selectedDict);
+                                        }
+                                        if (popupSelection) {
+                                            url += "&popup_selection=" + encodeURIComponent(popupSelection);
                                         }
                                         window.location.href = url;
                                     }
@@ -177,6 +203,7 @@ fun DictionaryEntryWebView(
                                 null,
                             )
                             s.flush(view)
+                            s.injectCustomCss(view)
                         }
                     }
 
@@ -192,6 +219,13 @@ fun DictionaryEntryWebView(
                 }
             }
 
+            // Ensure focus and long-click are enabled even for retained WebViews
+            webView.isLongClickable = true
+            webView.isFocusable = true
+            webView.isFocusableInTouchMode = true
+            webView.requestFocus()
+            webView.setOnLongClickListener { false }
+
             webView
         },
         update = { webView: WebView ->
@@ -204,14 +238,20 @@ fun DictionaryEntryWebView(
             state.pendingPayload = payload
 
             val theme = if (isDark) "dark" else "light"
+            val secondaryHex = "#%06X".format(0xFFFFFF and colorScheme.onSurfaceVariant.toArgb())
+            val hoverHex = "#%06X".format(0xFFFFFF and colorScheme.surfaceVariant.toArgb())
+
             webView.evaluateJavascript(
                 "(function(r) {" +
                     "r.dataset.theme = '$theme';" +
+                    "r.dataset.pageType = 'popup';" +
                     "r.style.setProperty('--accent', '$accentHex');" +
                     "r.style.setProperty('--on-accent', '$onAccentHex');" +
                     "r.style.setProperty('--fg-dynamic', '$fgHex');" +
                     "r.style.setProperty('--bg-dynamic', '$bgHex');" +
+                    "r.style.setProperty('--secondary-dynamic', '$secondaryHex');" +
                     "r.style.setProperty('--border-dynamic', '$borderHex');" +
+                    "r.style.setProperty('--hover-bg-dynamic', '$hoverHex');" +
                     "})(document.documentElement);",
                 null,
             )
@@ -229,14 +269,16 @@ fun DictionaryEntryWebView(
             )
 
             if (headerText.isNotEmpty()) {
-                val escapedHeader = headerText.take(20).replace("'", "\\'").replace("\"", "\\\"")
+                val escapedHeader = org.json.JSONObject.quote(headerText.take(20))
                 webView.evaluateJavascript(
-                    "window.DictionaryRenderer && window.DictionaryRenderer.renderHeader('$escapedHeader');",
+                    "window.DictionaryRenderer && window.DictionaryRenderer.renderHeader($escapedHeader);",
                     null,
                 )
             }
-
+            
+            state.customCss = customCss
             if (state.pageReady) {
+                state.injectCustomCss(webView)
                 state.flush(webView)
             }
         },
@@ -264,17 +306,113 @@ private class PayloadBridge {
     fun getJson(): String = _json
 }
 
-private class DictionaryWebViewState(
-    val bridge: PayloadBridge = PayloadBridge(),
+private class WordAudioBridge(
+    private val context: Context,
+    private val webViewProvider: () -> WebView?
 ) {
+    private val wordAudioService: WordAudioService by Injekt.injectLazy()
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main + kotlinx.coroutines.Job())
+    private var mediaPlayer: android.media.MediaPlayer? = null
+
+    @JavascriptInterface
+    fun fetchAudio(term: String, reading: String, callbackId: String) {
+        scope.launch {
+            val results = wordAudioService.findWordAudio(term, reading)
+            val jsonArray = org.json.JSONArray().apply {
+                results.forEach { result ->
+                    put(org.json.JSONObject().apply {
+                        put("name", result.name)
+                        put("url", result.url)
+                    })
+                }
+            }.toString()
+            
+            webViewProvider()?.evaluateJavascript(
+                "window.DictionaryRenderer && window.DictionaryRenderer.onAudioResults('$callbackId', $jsonArray);",
+                null
+            )
+        }
+    }
+    
+    @JavascriptInterface
+    fun playAudio(url: String) {
+        scope.launch {
+            try {
+                stopAudio()
+                
+                val player = android.media.MediaPlayer()
+                mediaPlayer = player
+                
+                if (url.startsWith("chimahon-local://")) {
+                    // Extract term and file from local URL: chimahon-local://sourceId/file
+                    val uri = Uri.parse(url)
+                    val sourceId = uri.host ?: return@launch
+                    val filePath = uri.path?.substring(1) ?: return@launch // remove leading slash
+                    
+                    val data = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        wordAudioService.getAudioData(filePath, sourceId)
+                    } ?: return@launch
+                    
+                    val tempFile = File.createTempFile("word_audio", ".mp3", context.cacheDir)
+                    tempFile.writeBytes(data)
+                    
+                    player.setDataSource(tempFile.absolutePath)
+                    tempFile.deleteOnExit()
+                } else {
+                    player.setDataSource(url)
+                }
+                
+                player.prepareAsync()
+                player.setOnPreparedListener { it.start() }
+                player.setOnCompletionListener { 
+                    it.release()
+                    if (mediaPlayer == it) mediaPlayer = null
+                }
+            } catch (e: Exception) {
+                Log.e("WordAudioBridge", "Error playing audio: $url", e)
+            }
+        }
+    }
+
+    fun stopAudio() {
+        mediaPlayer?.stop()
+        mediaPlayer?.release()
+        mediaPlayer = null
+    }
+}
+
+private class DictionaryWebViewState(
+    val context: Context,
+    val bridge: PayloadBridge = PayloadBridge(),
+    webViewProvider: () -> WebView?
+) {
+    val wordAudioBridge: WordAudioBridge = WordAudioBridge(context, webViewProvider)
     var pageReady: Boolean = false
     var fontSize: Int = 16
-    var onAnkiLookup: ((Int, Int?) -> Unit)? = null
+    var onAnkiLookup: ((Int, Int?, String?, String?) -> Unit)? = null
     var onRecursiveLookup: ((String) -> Unit)? = null
     var onTabSelect: ((Int) -> Unit)? = null
     var onBack: (() -> Unit)? = null
     var lastPayload: String? = null
     var pendingPayload: String? = null
+    var customCss: String = ""
+
+    fun injectCustomCss(webView: WebView) {
+        if (customCss.isEmpty()) {
+            webView.evaluateJavascript(
+                "var el = document.getElementById('hoshi-custom-css'); if (el) el.textContent = '';",
+                null
+            )
+            return
+        }
+        webView.evaluateJavascript(
+            "(function(v) {" +
+                "var el = document.getElementById('hoshi-custom-css');" +
+                "if (el) el.textContent = v;" +
+                "})(decodeURIComponent('${java.net.URLEncoder.encode(customCss, "UTF-8").replace("+", "%20")}'));",
+            null,
+        )
+    }
 
     fun flush(webView: WebView) {
         val payload = pendingPayload ?: return
@@ -315,10 +453,12 @@ private fun buildRenderPayload(
     showPitchDiagram: Boolean,
     showPitchNumber: Boolean,
     showPitchText: Boolean,
+    wordAudioAutoplay: Boolean,
     activeProfile: chimahon.anki.AnkiProfile,
     existingExpressions: Set<String> = emptySet(),
     tabs: List<TabInfo> = emptyList(),
     recursiveNavMode: String = "tabs",
+    wordAudioEnabled: Boolean = true,
 ): String {
     val buffer = StringWriter(4096)
     JsonWriter(buffer).use { w ->
@@ -343,6 +483,8 @@ private fun buildRenderPayload(
         w.name("showPitchDiagram").value(showPitchDiagram)
         w.name("showPitchNumber").value(showPitchNumber)
         w.name("showPitchText").value(showPitchText)
+        w.name("wordAudioAutoplay").value(wordAudioAutoplay)
+        w.name("wordAudioEnabled").value(wordAudioEnabled)
         w.name("recursiveNavMode").value(recursiveNavMode)
 
         // Tabs for recursive lookup navigation
@@ -495,6 +637,7 @@ internal fun getDictionaryBootstrapHtml(context: Context): String {
               <meta name="viewport" content="width=device-width,initial-scale=1.0">
               <style>$css</style>
               <style id="dictionary-styles"></style>
+              <style id="hoshi-custom-css"></style>
             </head>
             <body>
               <main id="entries" class="entries"></main>

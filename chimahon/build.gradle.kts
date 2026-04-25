@@ -47,4 +47,10 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.datastore.preferences)
     implementation(libs.bundles.media3)
+
+    // Dependency injection
+    implementation(libs.injekt)
+    
+    // Mihon core
+    implementation(projects.core.common)
 }

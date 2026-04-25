@@ -2,11 +2,12 @@ package eu.kanade.tachiyomi.ui.dictionary
 
 import chimahon.anki.AnkiProfile
 import chimahon.anki.AnkiProfileStore
+import chimahon.audio.WordAudioPreferences
 import tachiyomi.core.common.preference.PreferenceStore
 
 class DictionaryPreferences(
     private val preferenceStore: PreferenceStore,
-) {
+) : WordAudioPreferences {
 
     fun popupWidth() = preferenceStore.getInt("pref_dictionary_popup_width", 300)
 
@@ -23,6 +24,8 @@ class DictionaryPreferences(
     fun showPitchText() = preferenceStore.getBoolean("pref_dict_show_pitch_text", true)
 
     fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
+
+    fun customCss() = preferenceStore.getString("pref_dictionary_custom_css", "")
 
     // -------------------------------------------------------------------------
     // Profile storage (raw pref keys — consumed by AnkiProfileStore and settings UI)
@@ -82,4 +85,19 @@ class DictionaryPreferences(
 
     /** Legacy global dictionary order — kept only to supply the initial migration list. */
     fun dictionaryOrder() = preferenceStore.getString("pref_dictionary_order", "")
+
+    // -------------------------------------------------------------------------
+    // Word Audio Preferences (Implementing WordAudioPreferences interface)
+    // -------------------------------------------------------------------------
+
+    override fun wordAudioEnabled() = preferenceStore.getBoolean("pref_word_audio_enabled", true)
+    override fun wordAudioAutoplay() = preferenceStore.getBoolean("pref_word_audio_autoplay", false)
+    
+    /** JSON list of WordAudioSource */
+    override fun wordAudioSources() = preferenceStore.getString("pref_word_audio_sources", "[]")
+    
+    /** Local android.db file path */
+    override fun wordAudioLocalPath() = preferenceStore.getString("pref_word_audio_local_path", "")
+    
+    override fun wordAudioLocalEnabled() = preferenceStore.getBoolean("pref_word_audio_local_enabled", false)
 }

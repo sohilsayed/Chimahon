@@ -595,6 +595,7 @@ class ReaderActivity : BaseActivity() {
             val dismissPopup = {
                 ocrPopupState = null
             }
+
             OcrLookupPopup(
                 lookupString = popupState.lookupString,
                 fullText = popupState.fullText,
