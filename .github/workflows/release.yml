@@ -153,6 +153,7 @@ jobs:
               echo "No matching section found in CHANGELOG.md for version $version_name."
             } > release_notes.md
           fi
+          echo -e "\n<!-->" >> release_notes.md
 
       - name: Delete all artifacts
         uses: geekyeggo/delete-artifact@f275313e70c08f6120db482d7a6b98377786765b # v5.1.0
@@ -172,5 +173,5 @@ jobs:
             chimahon-armeabi-v7a-${{ needs.get_tag.outputs.tag }}.apk
             chimahon-x86-${{ needs.get_tag.outputs.tag }}.apk
             chimahon-x86_64-${{ needs.get_tag.outputs.tag }}.apk
-          draft: false
+          draft: true
           prerelease: false
