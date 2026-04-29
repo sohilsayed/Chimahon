@@ -110,6 +110,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
 
     internal var ocrBlocks: List<OcrTextBlock> = emptyList()
     internal var activeOcrBlock: OcrTextBlock? = null
+    val hasActiveOcrBlock: Boolean get() = activeOcrBlock != null
+    internal var activeOcrCharOffset: Int = 0
+    internal var activeOcrMatchedCount: Int = 0
     internal var ocrLayoutCache: Pair<OcrTextBlock, StaticLayout>? = null
 
     var onOcrLookup: ((String) -> Unit)? = null
@@ -130,6 +133,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
             repository: DictionaryRepository,
             screenX: Float,
             screenY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
+            isVertical: Boolean,
             mediaInfo: chimahon.MediaInfo?,
         ) -> Unit
     )? = null
@@ -635,9 +641,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
         }
         ocrBlocks = emptyList()
         activeOcrBlock = null
+        activeOcrCharOffset = 0
+        activeOcrMatchedCount = 0
         ocrLayoutCache = null
         ocrPopupLookupString = null
         onDismissOcrPopup?.invoke()
+    }
+
+    fun refineActiveOcrBlock(charCount: Int) {
+        activeOcrMatchedCount = charCount
+        (pageView as? SubsamplingScaleImageView)?.invalidate()
     }
 
     override fun onDetachedFromWindow() {
@@ -653,6 +666,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
         if (activeOcrBlock != null) {
             logcat { "OCR dismiss active block on pan/zoom" }
             activeOcrBlock = null
+            activeOcrCharOffset = 0
+            activeOcrMatchedCount = 0
             ocrLayoutCache = null
             onDismissOcrPopup?.invoke()
             (pageView as? SubsamplingScaleImageView)?.invalidate()
@@ -688,6 +703,8 @@ open class ReaderPageImageView @JvmOverloads constructor(
                 "OCR tap: activate block vertical=${block.vertical} chars=${block.fullText.length} x=$viewX y=$viewY"
             }
             activeOcrBlock = block
+            activeOcrCharOffset = 0
+            activeOcrMatchedCount = 0
             ocrLayoutCache = null
             ocrPopupLookupString = null
             (pageView as? SubsamplingScaleImageView)?.invalidate()
@@ -696,6 +713,16 @@ open class ReaderPageImageView @JvmOverloads constructor(
         // Immediately trigger dictionary popup at the tapped character position
         val ssiv = pageView as? SubsamplingScaleImageView ?: return true
         val charOffset = getCharOffset(block, viewX, viewY, ssiv) ?: 0
+        
+        if (wasActive == block && activeOcrCharOffset == charOffset) {
+            logcat { "OCR tap: same character tapped, dismissing popup" }
+            dismissActiveOcrBlock()
+            onDismissOcrPopup?.invoke()
+            return true // Consume the tap so it doesn't trigger pagination/HUD
+        }
+        
+        activeOcrCharOffset = charOffset
+        activeOcrMatchedCount = 0 // Reset until dictionary matches
         if (charOffset !in block.fullText.indices) {
             logcat(LogPriority.WARN) { "OCR char offset out of bounds: offset=$charOffset len=${block.fullText.length}" }
             return true
@@ -719,7 +746,31 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val repository = dictionaryRepository
         if (webView != null && repository != null) {
             ocrPopupLookupString = lookupString
-            onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, screenX, screenY, null)
+
+            // Calculate screen bounding box of the block for adaptive positioning
+            val centerX = (block.xmin + block.xmax) / 2f
+            val centerY = (block.ymin + block.ymax) / 2f
+            val width = block.xmax - block.xmin
+            val height = block.ymax - block.ymin
+            val boxScale = ocrBoxScale
+
+            val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
+            val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
+            val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
+            val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
+
+            val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: PointF(viewX, viewY)
+            val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: PointF(viewX, viewY)
+
+            // Convert view-relative to screen-relative coordinates
+            val location = IntArray(2)
+            ssiv.getLocationOnScreen(location)
+            val anchorX = tl.x + location[0]
+            val anchorY = tl.y + location[1]
+            val anchorWidth = br.x - tl.x
+            val anchorHeight = br.y - tl.y
+
+            onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, block.vertical, null)
         } else {
             logcat(LogPriority.WARN) { "OCR popup: webView or repository is null" }
         }

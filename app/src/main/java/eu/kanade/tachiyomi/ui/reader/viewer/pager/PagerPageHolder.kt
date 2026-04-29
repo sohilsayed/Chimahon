@@ -96,8 +96,8 @@ class PagerPageHolder(
         extraLoadJob = scope.launch { loadPageAndProcessStatus(2) }
 
         // Anki/Chimahon: OCR popup callback
-        onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo ->
-            viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
+        onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo ->
+            viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo)
         }
         onDismissOcrPopup = {
             viewer.onDismissOcrPopup?.invoke()

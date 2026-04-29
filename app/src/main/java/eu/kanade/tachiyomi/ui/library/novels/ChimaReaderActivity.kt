@@ -26,6 +26,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 
 /**
  * App-side subclass of [NovelReaderActivity] that wires text-selection events
@@ -39,6 +44,19 @@ import androidx.compose.runtime.collectAsState
 class ChimaReaderActivity : NovelReaderActivity() {
     
     private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
+    private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this) }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        lifecycleScope.launch {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                novelReaderSettings.verticalWriting.collect {
+                    isVerticalWriting = it
+                }
+            }
+        }
+    }
 
     override fun handleVolumeKey(forward: Boolean): Boolean {
         if (!readerPreferences.readWithVolumeKeys().get()) {
@@ -110,18 +128,27 @@ class ChimaReaderActivity : NovelReaderActivity() {
      * can be set from the non-Composable [onLookupRequested] override.
      */
     private var lookupState by mutableStateOf<LookupState?>(null)
+    private var isVerticalWriting = true
 
     private data class LookupState(
         val word: String,
         val sentence: String,
         val anchorX: Float,
         val anchorY: Float,
+        val anchorWidth: Float,
+        val anchorHeight: Float,
+        val isVertical: Boolean,
     )
 
     /** Called by [NovelReaderActivity] whenever the user selects text in the WebView. */
-    override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) {
-        lookupState = LookupState(word, sentence, x, y)
+    override fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
+        lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting)
         isPopupActive = true
+    }
+
+    override fun onDismissPopupRequested() {
+        lookupState = null
+        isPopupActive = false
     }
 
     /**
@@ -144,20 +171,6 @@ class ChimaReaderActivity : NovelReaderActivity() {
             isPopupActive = false
         }
 
-        // Background scrim to capture and consume clicks outside the popup.
-        // This prevents the click from reaching the WebView and triggering navigation.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null
-                ) {
-                    lookupState = null
-                    isPopupActive = false
-                }
-        )
-
         eu.kanade.presentation.theme.TachiyomiTheme {
             OcrLookupPopup(
                 lookupString = state.word,
@@ -171,10 +184,16 @@ class ChimaReaderActivity : NovelReaderActivity() {
                 repository = repo,
                 anchorX = state.anchorX,
                 anchorY = state.anchorY,
+                anchorWidth = state.anchorWidth,
+                anchorHeight = state.anchorHeight,
+                isVertical = state.isVertical,
                 // No screenshot — plain text selection only
                 mediaInfo = null,
                 onRequestScreenshot = null,
                 onCropTriggered = null,
+                onTermMatched = { charCount ->
+                    readerViewModel?.bridge?.send(com.canopus.chimareader.ui.reader.WebViewCommand.HighlightSelection(charCount))
+                },
                 modifier = Modifier,
             )
         }

@@ -95,8 +95,8 @@ class WebtoonPageHolder(
         frame.onImageLoaded = { onImageDecoded() }
         frame.onImageLoadError = { error -> setError(error) }
         frame.onScaleChanged = { viewer.activity.hideMenu() }
-        frame.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo ->
-            viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
+        frame.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo ->
+            viewer.onShowOcrPopup?.invoke(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo)
         }
         frame.onDismissOcrPopup = {
             viewer.onDismissOcrPopup?.invoke()
@@ -437,5 +437,12 @@ class WebtoonPageHolder(
      */
     fun dismissActiveOcrBlock() {
         frame.dismissActiveOcrBlock()
+    }
+
+    /**
+     * Refine the active OCR block highlight to a specific character count.
+     */
+    fun refineActiveOcrBlock(charCount: Int) {
+        frame.refineActiveOcrBlock(charCount)
     }
 }
