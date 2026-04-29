@@ -36,8 +36,8 @@ fun ChapterListSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        dragHandle = null,
-        modifier = Modifier.fillMaxHeight(0.8f)
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
     ) {
         Column(modifier = Modifier.padding(bottom = 32.dp)) {
             Text(
