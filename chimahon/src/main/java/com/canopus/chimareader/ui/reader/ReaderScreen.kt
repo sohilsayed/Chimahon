@@ -35,6 +35,8 @@ enum class ActiveSheet {
 fun ReaderScreen(
     book: BookMetadata,
     onBack: () -> Unit,
+    onShowHudChanged: (Boolean) -> Unit = {},
+    onThemeChanged: (backgroundColor: Int) -> Unit = {},
     onLookupRequested: (String, String, Float, Float) -> Unit = { _, _, _, _ -> },
     isPopupActive: Boolean = false,
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
@@ -103,13 +105,16 @@ fun ReaderScreen(
         initialSettings
     }
 
+    LaunchedEffect(currentSettings.backgroundColor) {
+        onThemeChanged(currentSettings.backgroundColor)
+    }
+
     val bgColor = Color(currentSettings.backgroundColor)
 
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(bgColor)
-            .systemBarsPadding()
     ) {
         Log.d("ReaderScreen", "BoxWithConstraints: maxHeight=$maxHeight, maxWidth=$maxWidth")
         
@@ -172,7 +177,11 @@ fun ReaderScreen(
                     }
 
                     // HUD visibility state - toggled by edge taps
-                    var showHud by remember { mutableStateOf(true) }
+                    var showHud by remember { mutableStateOf(false) }
+
+                    LaunchedEffect(showHud) {
+                        onShowHudChanged(showHud)
+                    }
 
                     val tapZonePx = with(density) { 64.dp.toPx() }.toInt()
 
@@ -211,7 +220,9 @@ fun ReaderScreen(
                             onToggleHud = { showHud = false },
                             backgroundColor = currentSettings.backgroundColor,
                             contentColor = currentSettings.textColor,
-                            modifier = Modifier.align(Alignment.TopCenter)
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .statusBarsPadding()
                         )
                     }
 
@@ -228,7 +239,8 @@ fun ReaderScreen(
                             onOpenAppearance = { activeSheet = ActiveSheet.Appearance },
                             onOpenStatistics = { activeSheet = ActiveSheet.Statistics },
                             onOpenSasayaki = { activeSheet = ActiveSheet.Sasayaki },
-                            modifier = Modifier.align(Alignment.BottomCenter)
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
                         )
                     }
                 }

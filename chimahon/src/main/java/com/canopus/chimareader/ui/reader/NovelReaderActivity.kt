@@ -13,6 +13,7 @@ import androidx.core.view.WindowCompat
 import com.canopus.chimareader.data.BookMetadata
 import com.canopus.chimareader.data.BookStorage
 import com.canopus.chimareader.data.NovelReaderSettings
+import androidx.core.graphics.ColorUtils
 import java.io.File
 
 open class NovelReaderActivity : ComponentActivity() {
@@ -111,6 +112,8 @@ open class NovelReaderActivity : ComponentActivity() {
             ReaderScreen(
                 book = metadata,
                 onBack = { finish() },
+                onShowHudChanged = { visible -> setSystemBarsVisibility(visible) },
+                onThemeChanged = { bgColor -> updateSystemBarsTheme(bgColor) },
                 onLookupRequested = ::onLookupRequested,
                 isPopupActive = isPopupActive,
                 onViewModelReady = { readerViewModel = it },
@@ -141,5 +144,12 @@ open class NovelReaderActivity : ComponentActivity() {
             windowInsetsController.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
             windowInsetsController.systemBarsBehavior = androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+    }
+
+    private fun updateSystemBarsTheme(backgroundColor: Int) {
+        val windowInsetsController = androidx.core.view.WindowInsetsControllerCompat(window, window.decorView)
+        val isLight = androidx.core.graphics.ColorUtils.calculateLuminance(backgroundColor) > 0.5
+        windowInsetsController.isAppearanceLightStatusBars = isLight
+        windowInsetsController.isAppearanceLightNavigationBars = isLight
     }
 }
