@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
+import chimahon.MediaInfo
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.getSystemService
@@ -253,6 +254,9 @@ class ReaderActivity : BaseActivity() {
         val repository: chimahon.DictionaryRepository,
         val anchorX: Float,
         val anchorY: Float,
+        val anchorWidth: Float = 0f,
+        val anchorHeight: Float = 0f,
+        val isVertical: Boolean,
         val mediaInfo: chimahon.MediaInfo? = null,
     )
 
@@ -606,6 +610,9 @@ class ReaderActivity : BaseActivity() {
                 repository = popupState.repository,
                 anchorX = popupState.anchorX,
                 anchorY = popupState.anchorY,
+                anchorWidth = popupState.anchorWidth,
+                anchorHeight = popupState.anchorHeight,
+                isVertical = popupState.isVertical,
                 mediaInfo = popupState.mediaInfo,
                 onRequestScreenshot = {
                     captureCurrentVisibleBitmap()
@@ -643,7 +650,7 @@ class ReaderActivity : BaseActivity() {
         when (val viewer = viewModel.state.value.viewer) {
             is PagerViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _ ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _ ->
                         runOnUiThread {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
@@ -655,7 +662,7 @@ class ReaderActivity : BaseActivity() {
                                 null
                             }
                             ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
+                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo)
                         }
                     }
                 }
@@ -667,7 +674,7 @@ class ReaderActivity : BaseActivity() {
             }
             is WebtoonViewer -> {
                 if (viewer.onShowOcrPopup == null) {
-                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, _ ->
+                    viewer.onShowOcrPopup = { lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, _ ->
                         runOnUiThread {
                             val state = viewModel.state.value
                             val mediaInfo = if (state.manga != null && state.currentChapter != null) {
@@ -679,7 +686,7 @@ class ReaderActivity : BaseActivity() {
                                 null
                             }
                             ocrPopupState =
-                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, mediaInfo)
+                                OcrPopupState(lookupString, fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, isVertical, mediaInfo)
                         }
                     }
                 }

@@ -38,7 +38,8 @@ fun ReaderScreen(
     onBack: () -> Unit,
     onShowHudChanged: (Boolean) -> Unit = {},
     onThemeChanged: (backgroundColor: Int) -> Unit = {},
-    onLookupRequested: (String, String, Float, Float) -> Unit = { _, _, _, _ -> },
+    onLookupRequested: (String, String, Float, Float, Float, Float) -> Unit = { _, _, _, _, _, _ -> },
+    onDismissPopupRequested: () -> Unit = {},
     isPopupActive: Boolean = false,
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
     additionalSettings: @Composable ColumnScope.() -> Unit = {}
@@ -210,7 +211,8 @@ fun ReaderScreen(
                         swipeThreshold = chapterSwipeDistance,
                         tapZonePx = tapZonePx,
                         isPopupActive = isPopupActive,
-                        onTextSelected = { word, sentence, x, y -> onLookupRequested(word, sentence, x, y) },
+                        onTextSelected = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
+                        onDismissPopupRequested = onDismissPopupRequested,
                     )
 
                     // Top HUD

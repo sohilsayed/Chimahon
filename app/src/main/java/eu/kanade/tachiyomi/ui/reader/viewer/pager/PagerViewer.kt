@@ -13,6 +13,7 @@ import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.viewpager.widget.ViewPager
 import chimahon.DictionaryRepository
+import chimahon.MediaInfo
 import eu.kanade.tachiyomi.R
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.ui.reader.ReaderActivity
@@ -53,6 +54,9 @@ abstract class PagerViewer(
             repository: DictionaryRepository,
             anchorX: Float,
             anchorY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
+            isVertical: Boolean,
             mediaInfo: chimahon.MediaInfo?,
         ) -> Unit
     )? = null

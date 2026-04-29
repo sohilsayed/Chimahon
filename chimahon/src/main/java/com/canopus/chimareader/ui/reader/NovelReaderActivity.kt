@@ -76,7 +76,10 @@ open class NovelReaderActivity : ComponentActivity() {
     }
 
     /** Override in subclass to receive text selection events from the reader. */
-    protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float) = Unit
+    protected open fun onLookupRequested(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) = Unit
+
+    /** Override in subclass to dismiss the popup when background is tapped. */
+    protected open fun onDismissPopupRequested() = Unit
 
     @Composable
     protected open fun PopupOverlay() {}
@@ -114,7 +117,8 @@ open class NovelReaderActivity : ComponentActivity() {
                 onBack = { finish() },
                 onShowHudChanged = { visible -> setSystemBarsVisibility(visible) },
                 onThemeChanged = { bgColor -> updateSystemBarsTheme(bgColor) },
-                onLookupRequested = ::onLookupRequested,
+                onLookupRequested = { word, sentence, x, y, w, h -> onLookupRequested(word, sentence, x, y, w, h) },
+                onDismissPopupRequested = { onDismissPopupRequested() },
                 isPopupActive = isPopupActive,
                 onViewModelReady = { readerViewModel = it },
                 additionalSettings = { AdditionalAppearanceSettings() }

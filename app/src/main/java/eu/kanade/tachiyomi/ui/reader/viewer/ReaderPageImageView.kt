@@ -133,6 +133,9 @@ open class ReaderPageImageView @JvmOverloads constructor(
             repository: DictionaryRepository,
             screenX: Float,
             screenY: Float,
+            anchorWidth: Float,
+            anchorHeight: Float,
+            isVertical: Boolean,
             mediaInfo: chimahon.MediaInfo?,
         ) -> Unit
     )? = null
@@ -735,7 +738,31 @@ open class ReaderPageImageView @JvmOverloads constructor(
         val repository = dictionaryRepository
         if (webView != null && repository != null) {
             ocrPopupLookupString = lookupString
-            onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, screenX, screenY, null)
+
+            // Calculate screen bounding box of the block for adaptive positioning
+            val centerX = (block.xmin + block.xmax) / 2f
+            val centerY = (block.ymin + block.ymax) / 2f
+            val width = block.xmax - block.xmin
+            val height = block.ymax - block.ymin
+            val boxScale = ocrBoxScale
+
+            val srcXMin = (centerX - (width * boxScale) / 2f) * ssiv.sWidth
+            val srcYMin = (centerY - (height * boxScale) / 2f) * ssiv.sHeight
+            val srcXMax = (centerX + (width * boxScale) / 2f) * ssiv.sWidth
+            val srcYMax = (centerY + (height * boxScale) / 2f) * ssiv.sHeight
+
+            val tl = ssiv.sourceToViewCoord(srcXMin, srcYMin) ?: PointF(viewX, viewY)
+            val br = ssiv.sourceToViewCoord(srcXMax, srcYMax) ?: PointF(viewX, viewY)
+
+            // Convert view-relative to screen-relative coordinates
+            val location = IntArray(2)
+            ssiv.getLocationOnScreen(location)
+            val anchorX = tl.x + location[0]
+            val anchorY = tl.y + location[1]
+            val anchorWidth = br.x - tl.x
+            val anchorHeight = br.y - tl.y
+
+            onShowOcrPopup?.invoke(lookupString, block.fullText, charOffset, webView, repository, anchorX, anchorY, anchorWidth, anchorHeight, block.vertical, null)
         } else {
             logcat(LogPriority.WARN) { "OCR popup: webView or repository is null" }
         }

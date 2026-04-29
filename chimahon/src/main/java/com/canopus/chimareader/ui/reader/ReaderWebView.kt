@@ -42,7 +42,8 @@ fun ReaderWebView(
     swipeThreshold: Int = 96,
     tapZonePx: Int = 100,
     isPopupActive: Boolean = false,
-    onTextSelected: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    onTextSelected: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
+    onDismissPopupRequested: () -> Unit = {},
 ) {
     val pendingCommands = remember(bridge) { bridge.pendingCommands }
 
@@ -96,6 +97,7 @@ fun ReaderWebView(
                 swipeThreshold = swipeThreshold,
                 tapZonePx = tapZonePx,
                 onTextSelectedCallback = onTextSelected,
+                onDismissPopupRequested = onDismissPopupRequested,
             ).apply {
                 settings.allowFileAccess = true
                 settings.allowContentAccess = true
@@ -163,6 +165,7 @@ fun ReaderWebView(
             v.continuousMode = continuousMode
             v.readerSettings = readerSettings
             v.focusMode = focusMode
+            v.isPopupActive = isPopupActive
             v.setBackgroundColor(readerSettings.backgroundColor)
 
             if (pendingCommands.isEmpty()) return@AndroidView
@@ -247,7 +250,8 @@ private class ReaderAndroidWebView(
     private val swipeThreshold: Int = 96,
     private val tapZonePx: Int = 100,
     var isPopupActive: Boolean = false,
-    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
+    private val onDismissPopupRequested: () -> Unit = {},
 ) : WebView(context) {
 
     private var touchStartX = 0f
@@ -277,6 +281,11 @@ private class ReaderAndroidWebView(
 
     override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
         super.onScrollChanged(l, t, oldl, oldt)
+        
+        if (isPopupActive) {
+            onDismissPopupRequested()
+        }
+        
         if (continuousMode && !isImageOnly) {
             val now = System.currentTimeMillis()
             if (now - lastProgressReportTime > 1000L) {
@@ -335,17 +344,19 @@ private class ReaderAndroidWebView(
                 animate().alpha(1f).setDuration(160).start()
             }
         },
-        onTextSelectedCallback = { word, sentence, x, y ->
-            if (!isPopupActive) {
-                post {
-                    val density = context.resources.displayMetrics.density
-                    onTextSelectedCallback(word, sentence, x * density, y * density)
-                }
+        onTextSelectedCallback = { word, sentence, x, y, w, h ->
+            post {
+                val density = context.resources.displayMetrics.density
+                val loc = IntArray(2)
+                getLocationOnScreen(loc)
+                onTextSelectedCallback(word, sentence, x * density + loc[0], y * density + loc[1], w * density, h * density)
             }
         },
         onBackgroundTap = { x, y ->
-            if (!isPopupActive) {
-                post {
+            post {
+                if (isPopupActive) {
+                    onDismissPopupRequested()
+                } else {
                     val density = context.resources.displayMetrics.density
                     val eventX = x * density
                     val eventY = y * density
@@ -915,7 +926,7 @@ private class ReaderAndroidWebView(
 
 private class ReaderJavascriptBridge(
     private val onRestoreCompleted: () -> Unit,
-    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float) -> Unit = { _, _, _, _ -> },
+    private val onTextSelectedCallback: (word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) -> Unit = { _, _, _, _, _, _ -> },
     private val onBackgroundTap: (x: Float, y: Float) -> Unit = { _, _ -> },
 ) {
     @JavascriptInterface
@@ -924,8 +935,8 @@ private class ReaderJavascriptBridge(
     }
 
     @JavascriptInterface
-    fun onTextSelected(word: String, sentence: String, x: Float, y: Float) {
-        if (word.isNotBlank()) onTextSelectedCallback.invoke(word, sentence, x, y)
+    fun onTextSelected(word: String, sentence: String, x: Float, y: Float, w: Float, h: Float) {
+        if (word.isNotBlank()) onTextSelectedCallback.invoke(word, sentence, x, y, w, h)
     }
 
     @JavascriptInterface
