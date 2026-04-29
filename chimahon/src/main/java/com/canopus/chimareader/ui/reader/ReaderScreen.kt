@@ -161,7 +161,7 @@ fun ReaderScreen(
                     
                     DisposableEffect(Unit) {
                         onDispose {
-                            viewModel.saveBookmark(viewModel.currentProgress, forceStatisticsSave = true)
+                            viewModel.saveBookmark(viewModel.currentProgress)
                         }
                     }
 

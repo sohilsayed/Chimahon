@@ -125,7 +125,7 @@ class EpubParser {
             val opfResult = opfParser.parseOpf(opfContent, contentDir)
 
             val tocParser = TocParser()
-            val tableOfContents = tocParser.parseTocFromManifest(opfResult.manifest, extractor, contentDir)
+            val tableOfContents = tocParser.parseToc(opfResult.spine.toc, opfResult.manifest, extractor, contentDir)
 
             val coverPath = opfResult.metadata.coverId?.let { coverId ->
                 opfResult.manifest.items[coverId]?.href?.let { href ->

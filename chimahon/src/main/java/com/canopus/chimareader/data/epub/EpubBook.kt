@@ -76,20 +76,35 @@ data class EpubBook(
             return 0
         }
 
-        val path = chapterAbsolutePath(index.toUInt()) ?: return 0
-        val file = File(path)
-        if (!file.exists()) return 0
-
         return try {
-            val doc = Jsoup.parse(file, "UTF-8", "")
-            val text = doc.text()
+            val content = EpubParser().parseChapter(this, index) ?: return 0
             
-            // TTSU Regex matching: Japanese/Chinese characters, digits and alphabet
-            // /[^\d\w○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚｦ-ﾝ\p{IsHan}]+/
-            val ttsuRegex = Regex("[^0-9a-zA-Z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚｦ-ﾝ\\p{IsHan}]")
+            // Use the same approach as Hoshi Reader's characterCount():
+            // 1. Extract <body>...</body>
+            // 2. Strip <rt> (furigana), <script>, <style>, then ALL tags
+            // 3. Decode HTML entities
+            // 4. Apply TTSU character filter regex
+            var text = content
+            val bodyMatch = Regex("(?s)<body.*?</body>").find(text)
+            if (bodyMatch != null) {
+                text = bodyMatch.value
+            }
+            // Strip <rt>...</rt> (furigana annotations)
+            text = text.replace(Regex("(?s)<rt>.*?</rt>"), "")
+            // Strip <script>...</script> and <style>...</style>
+            text = text.replace(Regex("(?s)<(script|style)[^>]*>.*?</\\1>"), "")
+            // Strip all HTML tags
+            text = text.replace(Regex("<[^>]+>"), "")
+            // Decode common HTML entities
+            text = text.replace("&nbsp;", " ")
+            text = text.replace("&amp;", "&")
+            text = text.replace("&lt;", "<")
+            text = text.replace("&gt;", ">")
+
+            // TTSU character filter (matching Hoshi's regex with \p{Unified_Ideograph})
+            val ttsuRegex = Regex("[^0-9A-Za-z○◯々-〇〻ぁ-ゖゝ-ゞァ-ヺー０-９Ａ-Ｚａ-ｚｦ-ﾝ\\p{IsHan}]")
             val filteredText = text.replace(ttsuRegex, "")
             
-            // In JS Array.from(s).length provides the codepoint count (surrogate pairs count as 1)
             val charCount = filteredText.codePointCount(0, filteredText.length)
             chapterLengthCache[index] = charCount
             charCount
