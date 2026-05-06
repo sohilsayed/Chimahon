@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PointF
+import android.graphics.RectF
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -204,48 +205,119 @@ class OcrSubsamplingImageView(
     ) {
         if (text.isBlank()) return
 
-        // Convert normalized to screen
-        val centerX = (geo.xmin + geo.xmax) / 2f
-        val centerY = (geo.ymin + geo.ymax) / 2f
-        val width = geo.xmax - geo.xmin
-        val height = geo.ymax - geo.ymin
-        val boxScale = host.ocrBoxScale
-
-        val srcXMin = (centerX - (width * boxScale) / 2f) * sWidth
-        val srcYMin = (centerY - (height * boxScale) / 2f) * sHeight
-        val srcXMax = (centerX + (width * boxScale) / 2f) * sWidth
-        val srcYMax = (centerY + (height * boxScale) / 2f) * sHeight
-
-        val tl = sourceToViewCoord(srcXMin, srcYMin) ?: return
-        val br = sourceToViewCoord(srcXMax, srcYMax) ?: return
-        val sW = br.x - tl.x
-        val sH = br.y - tl.y
+        val rect = getLineRect(geo, host.ocrBoxScale) ?: return
+        val sW = rect.width()
+        val sH = rect.height()
 
         canvas.save()
 
         // Rotate around center of the line box
-        canvas.rotate(geo.rotation, tl.x + sW / 2f, tl.y + sH / 2f)
+        canvas.rotate(geo.rotation, rect.centerX(), rect.centerY())
 
         // Draw line-level background (now respects rotation)
-        canvas.drawRect(tl.x, tl.y, br.x, br.y, backgroundPaint)
+        canvas.drawRect(rect, backgroundPaint)
 
         // Auto-detect direction if not explicitly vertical at block level.
-        // A box significantly taller than wide is almost certainly vertical Tategumi.
-        val lineIsVertical = isVertical || (height / width > 1.2f)
+        val lineIsVertical = isVertical || (geo.ymax - geo.ymin) / (geo.xmax - geo.xmin) > 1.2f
 
         if (lineIsVertical) {
-            // For vertical lines, we use per-character column draw
-            drawColumnText(canvas, text, lineStartOffset, tl, sW, sH, host)
+            drawColumnText(canvas, text, lineStartOffset, rect, host)
         } else {
-            // For horizontal lines, we now use binary search for ideal font size
-            drawHorizontalLineText(canvas, text, lineStartOffset, tl, sW, sH, host)
+            drawHorizontalLineText(canvas, text, lineStartOffset, rect, host)
         }
 
         canvas.restore()
     }
 
-    private fun drawHorizontalLineText(canvas: Canvas, text: String, lineStartOffset: Int, tl: PointF, sW: Float, sH: Float, host: ReaderPageImageView) {
+    fun getLineRect(geo: OcrLineGeometry, scale: Float): RectF? {
+        if (!isReady) return null
+        val centerX = (geo.xmin + geo.xmax) / 2f
+        val centerY = (geo.ymin + geo.ymax) / 2f
+        val width = geo.xmax - geo.xmin
+        val height = geo.ymax - geo.ymin
+
+        val srcXMin = (centerX - (width * scale) / 2f) * sWidth
+        val srcYMin = (centerY - (height * scale) / 2f) * sHeight
+        val srcXMax = (centerX + (width * scale) / 2f) * sWidth
+        val srcYMax = (centerY + (height * scale) / 2f) * sHeight
+
+        val tl = sourceToViewCoord(srcXMin, srcYMin) ?: return null
+        val br = sourceToViewCoord(srcXMax, srcYMax) ?: return null
+        return RectF(tl.x, tl.y, br.x, br.y)
+    }
+
+    fun getLineSubstringRect(
+        text: String,
+        geo: OcrLineGeometry,
+        start: Int,
+        end: Int,
+        scale: Float,
+        isVertical: Boolean,
+    ): RectF? {
+        val rect = getLineRect(geo, scale) ?: return null
+        if (start <= 0 && end >= text.length) return rect
+
+        val sW = rect.width()
+        val sH = rect.height()
+        val charW = sW / text.length.coerceAtLeast(1)
+        val charH = sH / text.length.coerceAtLeast(1)
+
+        return if (isVertical) {
+            RectF(rect.left, rect.top + start * charH, rect.right, rect.top + end * charH)
+        } else {
+            RectF(rect.left + start * charW, rect.top, rect.left + end * charW, rect.bottom)
+        }
+    }
+
+    /**
+     * Get the screen-space bounding box for a range of characters in a block.
+     * Reuses the same geometry logic as [onDraw] to ensure alignment.
+     */
+    fun getMatchedWordRect(block: OcrTextBlock, startOffset: Int, count: Int, scale: Float): RectF? {
+        if (!isReady || count <= 0) return null
+
+        val geometries = block.lineGeometries
+        var currentOffset = 0
+        val rects = mutableListOf<RectF>()
+
+        if (geometries != null && geometries.size == block.lines.size) {
+            for (i in block.lines.indices) {
+                val text = block.lines[i]
+                val lineEnd = currentOffset + text.length
+                if (startOffset < lineEnd && (startOffset + count) > currentOffset) {
+                    val lineRect = getLineSubstringRect(
+                        text,
+                        geometries[i],
+                        maxOf(0, startOffset - currentOffset),
+                        minOf(text.length, startOffset + count - currentOffset),
+                        scale,
+                        block.vertical,
+                    )
+                    if (lineRect != null) rects.add(lineRect)
+                }
+                currentOffset = lineEnd
+            }
+        }
+
+        if (rects.isEmpty()) return null
+
+        val result = RectF(rects[0])
+        for (i in 1 until rects.size) {
+            result.union(rects[i])
+        }
+
+        // Convert view-relative to screen-relative coordinates
+        val location = IntArray(2)
+        getLocationOnScreen(location)
+        result.offset(location[0].toFloat(), location[1].toFloat())
+
+        return result
+    }
+
+    private fun drawHorizontalLineText(canvas: Canvas, text: String, lineStartOffset: Int, rect: RectF, host: ReaderPageImageView) {
         val density = context.resources.displayMetrics.density
+        val sW = rect.width()
+        val sH = rect.height()
 
         // Binary search for maximizing font size, similar to userscript's findBestFit
         var low = 8f * density
@@ -279,16 +351,16 @@ class OcrSubsamplingImageView(
         val matchedEnd = matchedStart + host.activeOcrMatchedCount
 
         text.forEachIndexed { i, ch ->
-            val xCenter = tl.x + charWidth * (i + 0.5f)
-            val yCenter = tl.y + sH / 2f
+            val xCenter = rect.left + charWidth * (i + 0.5f)
+            val yCenter = rect.top + sH / 2f
             
             if (host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
                 canvas.drawRect(
-                    tl.x + charWidth * i,
-                    tl.y,
-                    tl.x + charWidth * (i + 1),
-                    tl.y + sH,
-                    highlightPaint
+                    rect.left + charWidth * i,
+                    rect.top,
+                    rect.left + charWidth * (i + 1),
+                    rect.top + sH,
+                    highlightPaint,
                 )
             }
             
@@ -296,8 +368,10 @@ class OcrSubsamplingImageView(
         }
     }
 
-    private fun drawColumnText(canvas: Canvas, text: String, lineStartOffset: Int, tl: PointF, sW: Float, sH: Float, host: ReaderPageImageView) {
+    private fun drawColumnText(canvas: Canvas, text: String, lineStartOffset: Int, rect: RectF, host: ReaderPageImageView) {
         val density = context.resources.displayMetrics.density
+        val sW = rect.width()
+        val sH = rect.height()
         val rowStep = sH / text.length.coerceAtLeast(1)
 
         // Binary search for maximizing vertical font size
@@ -327,20 +401,20 @@ class OcrSubsamplingImageView(
 
         val fm = textPaint.fontMetrics
         val baselineShift = -(fm.ascent + fm.descent) / 2f
-        val x = tl.x + sW / 2f
+        val x = rect.left + sW / 2f
         val matchedStart = host.activeOcrCharOffset - lineStartOffset
         val matchedEnd = matchedStart + host.activeOcrMatchedCount
 
         text.forEachIndexed { i, ch ->
-            val yCenter = tl.y + rowStep * (i + 0.5f)
+            val yCenter = rect.top + rowStep * (i + 0.5f)
 
             if (host.activeOcrMatchedCount > 0 && i in matchedStart until matchedEnd) {
                 canvas.drawRect(
-                    tl.x,
-                    tl.y + rowStep * i,
-                    tl.x + sW,
-                    tl.y + rowStep * (i + 1),
-                    highlightPaint
+                    rect.left,
+                    rect.top + rowStep * i,
+                    rect.left + sW,
+                    rect.top + rowStep * (i + 1),
+                    highlightPaint,
                 )
             }
 

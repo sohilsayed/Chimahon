@@ -714,6 +714,10 @@ class ReaderViewModel @JvmOverloads constructor(
         mutableState.update {
             it.copy(viewer = viewer)
         }
+        // Chimahon: Pre-initialize OCR resources if enabled
+        if (viewer != null && isOcrEnabled()) {
+            eventChannel.trySend(Event.InitializeOcrResources)
+        }
     }
 
     /**
@@ -747,6 +751,11 @@ class ReaderViewModel @JvmOverloads constructor(
         val inDownloadRange = page.number.toDouble() / pages.size > 0.25
         if (inDownloadRange) {
             downloadNextChapters()
+        }
+        
+        // Chimahon: Pre-fetch OCR for next pages
+        if (isOcrEnabled()) {
+            prefetchOcrBlocks(page)
         }
 
         eventChannel.trySend(Event.PageChanged)
@@ -1621,6 +1630,26 @@ class ReaderViewModel @JvmOverloads constructor(
         }
     }
 
+    /**
+     * Pre-fetch OCR blocks for pages ahead to avoid latency when turning pages.
+     */
+    private fun prefetchOcrBlocks(currentPage: ReaderPage) {
+        val chapter = currentPage.chapter
+        val pages = chapter.pages ?: return
+        val currentIndex = currentPage.index
+
+        // Pre-fetch next 2 pages
+        for (i in 1..2) {
+            val nextIndex = currentIndex + i
+            if (nextIndex < pages.size) {
+                val nextPage = pages[nextIndex]
+                viewModelScope.launchIO {
+                    getOcrBlocks(nextPage)
+                }
+            }
+        }
+    }
+
     private suspend fun loadMokuroChapter(
         chapter: Chapter,
         source: Source,
@@ -2188,6 +2217,7 @@ class ReaderViewModel @JvmOverloads constructor(
     sealed interface Event {
         data object ReloadViewerChapters : Event
         data object PageChanged : Event
+        data object InitializeOcrResources : Event
         data class SetOrientation(val orientation: Int) : Event
         data class SetCoverResult(val result: SetAsCoverResult) : Event
 

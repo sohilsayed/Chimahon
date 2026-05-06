@@ -11,6 +11,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -334,6 +338,16 @@ fun OcrLookupPopup(
     ) {
         val result = results.getOrNull(index) ?: return
 
+        // Local helper to update the state, which triggers the optimized JS call via DictionaryEntryWebView
+        fun updateStatus(expression: String) {
+            val frame = currentFrame ?: return
+            val frameIndex = lookupStack.indexOfFirst { it.id == frame.id }
+            if (frameIndex >= 0) {
+                val newExisting = frame.existingExpressions + expression
+                lookupStack[frameIndex] = lookupStack[frameIndex].copy(existingExpressions = newExisting)
+            }
+        }
+
         val shouldUseCropMode = screenshotFieldMapped && cropMode == "crop" && onCropTriggered != null
 
         if (shouldUseCropMode) {
@@ -357,16 +371,17 @@ fun OcrLookupPopup(
                     popupSelection = popupSelection,
                     forceOpen = forceOpen,
                 )
-                if (ankiResult is AnkiResult.Success) {
+                if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        updateStatus(result.term.expression)
                         onDismiss()
-                        onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
+                        if (ankiResult is AnkiResult.Success) {
+                            onCropTriggered.invoke(ankiResult.noteId, glossaryIndex)
+                        }
                     }
                 } else {
                     withContext(kotlinx.coroutines.Dispatchers.Main) {
                         when (ankiResult) {
-                            is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
-                            is AnkiResult.OpenCard -> chimahon.anki.AnkiDroidBridge(context).guiEditNote(ankiResult.noteId)
                             is AnkiResult.PermissionDenied -> context.toast(MR.strings.pref_anki_permission_denied)
                             is AnkiResult.Error -> context.toast(
                                 context.stringResource(MR.strings.anki_card_error, ankiResult.message),
@@ -400,15 +415,26 @@ fun OcrLookupPopup(
                     popupSelection = popupSelection,
                     forceOpen = forceOpen,
                 )
-                when (ankiResult) {
-                    is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
-                    is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)
-                    is AnkiResult.OpenCard -> chimahon.anki.AnkiDroidBridge(context).guiEditNote(ankiResult.noteId)
-                    is AnkiResult.PermissionDenied -> context.toast(MR.strings.pref_anki_permission_denied)
-                    is AnkiResult.Error -> context.toast(
-                        context.stringResource(MR.strings.anki_card_error, ankiResult.message),
-                    )
-                    is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    when (ankiResult) {
+                        is AnkiResult.Success -> {
+                            updateStatus(result.term.expression)
+                            context.toast(MR.strings.anki_card_added)
+                        }
+                        is AnkiResult.CardExists -> {
+                            updateStatus(result.term.expression)
+                            context.toast(MR.strings.anki_card_exists)
+                        }
+                        is AnkiResult.OpenCard -> {
+                            updateStatus(result.term.expression)
+                            chimahon.anki.AnkiDroidBridge(context).guiEditNote(ankiResult.noteId)
+                        }
+                        is AnkiResult.PermissionDenied -> context.toast(MR.strings.pref_anki_permission_denied)
+                        is AnkiResult.Error -> context.toast(
+                            context.stringResource(MR.strings.anki_card_error, ankiResult.message),
+                        )
+                        is AnkiResult.NotConfigured -> context.toast(MR.strings.anki_not_configured)
+                    }
                 }
             }
         }
@@ -422,53 +448,89 @@ fun OcrLookupPopup(
         null
     }
 
-    // === Adaptive Positioning & Sizing Logic ===
-    // Use the bounding box of the anchor (e.g. OCR block or tapped point)
-    val anchorLeft = anchorX
-    val anchorTop = anchorY
-    val anchorRight = anchorX + anchorWidth
-    val anchorBottom = anchorY + anchorHeight
-
-    val spaceRight = screenWidthPx - anchorRight - gapPx
-    val spaceLeft = anchorLeft - gapPx
-    val spaceBelow = screenHeightPx - anchorBottom - gapPx
-    val spaceAbove = anchorTop - gapPx
-
+    // === Popup Positioning: evaluate all 4 sides, pick the best ===
     data class PopupLayoutResult(val x: Float, val y: Float, val widthPx: Float, val heightPx: Float)
 
-    val layoutResult = run {
-        // Hoshi logic: prefer sides for vertical text, top/bottom for horizontal text
-        val preferSide = isVertical || (maxOf(spaceRight, spaceLeft) >= popupWidthPx && maxOf(spaceRight, spaceLeft) > maxOf(spaceBelow, spaceAbove))
+    val layoutResult = remember(
+        anchorX, anchorY, anchorWidth, anchorHeight,
+        screenWidthPx, screenHeightPx, popupWidthPx, popupHeightPx, isVertical,
+    ) {
+        val w = minOf(popupWidthPx, screenWidthPx - paddingPx * 2)
+        val h = minOf(popupHeightPx, screenHeightPx - paddingPx * 2)
 
-        if (preferSide) {
-            // Side placement (Right or Left)
-            val actualWidthPx = minOf(maxOf(spaceRight, spaceLeft) - paddingPx, popupWidthPx)
-            val actualHeightPx = minOf(screenHeightPx - paddingPx * 2, popupHeightPx)
+        val ax = anchorX
+        val ay = anchorY
+        val aw = anchorWidth
+        val ah = anchorHeight
+        val acx = ax + aw / 2f
+        val acy = ay + ah / 2f
 
-            val x = if (spaceRight >= spaceLeft) {
-                anchorRight + gapPx
-            } else {
-                anchorLeft - actualWidthPx - gapPx
-            }
-            // Center Y relative to the anchor's vertical center
-            val anchorCenterY = anchorTop + anchorHeight / 2f
-            val y = (anchorCenterY - actualHeightPx / 2).coerceIn(paddingPx, screenHeightPx - actualHeightPx - paddingPx)
-            PopupLayoutResult(x, y, actualWidthPx, actualHeightPx)
-        } else {
-            // Top or Bottom placement
-            val actualWidthPx = minOf(screenWidthPx - paddingPx * 2, popupWidthPx)
-            val actualHeightPx = minOf(maxOf(spaceBelow, spaceAbove) - paddingPx, popupHeightPx)
+        // Candidate positions (top-left of popup) for each side
+        // format: [x, y, isVerticalSide]
+        val candidates = arrayOf(
+            floatArrayOf(ax + aw + gapPx, acy - h / 2f, 1f), // Right
+            floatArrayOf(ax - w - gapPx, acy - h / 2f, 1f), // Left
+            floatArrayOf(acx - w / 2f, ay + ah + gapPx, 0f), // Below
+            floatArrayOf(acx - w / 2f, ay - h - gapPx, 0f), // Above
+        )
 
-            // Center X relative to the anchor's horizontal center
-            val anchorCenterX = anchorLeft + anchorWidth / 2f
-            val x = (anchorCenterX - actualWidthPx / 2).coerceIn(paddingPx, screenWidthPx - actualWidthPx - paddingPx)
-            val y = if (spaceBelow >= spaceAbove) {
-                anchorBottom + gapPx
-            } else {
-                anchorTop - actualHeightPx - gapPx
-            }
-            PopupLayoutResult(x, y, actualWidthPx, actualHeightPx)
+        fun overlapArea(px: Float, py: Float): Float {
+            if (aw <= 0f || ah <= 0f) return 0f
+            val ox = minOf(px + w, ax + aw) - maxOf(px, ax)
+            val oy = minOf(py + h, ay + ah) - maxOf(py, ay)
+            return if (ox > 0f && oy > 0f) ox * oy else 0f
         }
+
+        var bestScore = Float.MAX_VALUE
+        var bestX = paddingPx
+        var bestY = paddingPx
+
+        for (i in candidates.indices) {
+            val c = candidates[i]
+            val rawX = c[0]
+            val rawY = c[1]
+
+            // Clamp to screen boundaries with padding
+            val clampedX = rawX.coerceIn(paddingPx, screenWidthPx - w - paddingPx)
+            val clampedY = rawY.coerceIn(paddingPx, screenHeightPx - h - paddingPx)
+
+            val area = overlapArea(clampedX, clampedY)
+
+            // Penalties:
+            // 1. Overlap is the primary penalty (Area weighted heavily)
+            val overlapPenalty = area * 15f
+
+            // 2. Clamping penalty (how much we had to shift the popup)
+            val shiftX = Math.abs(clampedX - rawX)
+            val shiftY = Math.abs(clampedY - rawY)
+            val clampingPenalty = (shiftX + shiftY) * 2f
+
+            // 3. Axis & Side preference
+            // Candidates: 0=Right, 1=Left, 2=Below, 3=Above
+            val sideBias = if (isVertical) {
+                when (i) {
+                    0, 3 -> -1500f // Right or Above (Already read area for vertical)
+                    1, 2 -> -1200f // Left or Below
+                    else -> 0f
+                }
+            } else {
+                when (i) {
+                    1, 3 -> -1500f // Left or Above (Already read area for horizontal)
+                    0, 2 -> -1200f // Right or Below
+                    else -> 0f
+                }
+            }
+
+            val score = overlapPenalty + clampingPenalty + sideBias
+
+            if (score < bestScore) {
+                bestScore = score
+                bestX = clampedX
+                bestY = clampedY
+            }
+        }
+
+        PopupLayoutResult(bestX, bestY, w, h)
     }
 
     val actualWidthDp = with(density) { layoutResult.widthPx.toDp() }

@@ -1368,8 +1368,8 @@
 
     const row = document.createElement('div');
     row.className = 'entry-deinflection-row';
-    
-    // Clean process: "name: description" -> "name"
+
+    // Clean name only (before ': ') for summary chips
     const cleanProcess = process.map(p => {
       const colonIdx = p.indexOf(': ');
       return colonIdx !== -1 ? p.substring(0, colonIdx) : p;
@@ -1377,26 +1377,72 @@
 
     const label = document.createElement('span');
     label.className = 'deinflection-label';
-    // Show the chain of clean rules like Yomitan
-    label.textContent = '« ' + cleanProcess.join(' « ');
+    // Left→right: surface→base. process[0] is the last step applied so reverse.
+    label.textContent = cleanProcess.slice().reverse().join(' » ');
     row.appendChild(label);
 
+    // ── Details panel ─────────────────────────────────────────
     const details = document.createElement('div');
     details.className = 'inflection-details';
     details.style.display = 'none';
-    
-    // In details, show full info including rules and descriptions
-    const fullProcess = process.join('\n');
-    const cleanRules = rules ? [...new Set(rules.split(/\s+/))].join(' ') : '';
-    const text = cleanRules ? `${cleanRules}\n${fullProcess}` : fullProcess;
-    details.textContent = text;
+
+    // Word-class rules chips at the top (e.g. "v5" "adj-i")
+    if (rules) {
+      const ruleSet = [...new Set(rules.split(/\s+/).filter(Boolean))];
+      if (ruleSet.length > 0) {
+        const rulesEl = document.createElement('div');
+        rulesEl.className = 'inflection-rules-row';
+        ruleSet.forEach(r => {
+          const chip = document.createElement('span');
+          chip.className = 'deinflection-tag';
+          chip.textContent = r;
+          rulesEl.appendChild(chip);
+        });
+        details.appendChild(rulesEl);
+      }
+    }
+
+    // Each deinflection step as its own card — makes clear where one rule ends
+    // and the next begins. Reversed so card 1 = first transformation applied.
+    const stepsToShow = [...process].reverse();
+    stepsToShow.forEach((p, i) => {
+      const colonIdx = p.indexOf(': ');
+      const name = colonIdx !== -1 ? p.substring(0, colonIdx) : p;
+      const desc = colonIdx !== -1 ? p.substring(colonIdx + 2) : '';
+
+      const card = document.createElement('div');
+      card.className = 'inflection-step-card';
+
+      const header = document.createElement('div');
+      header.className = 'inflection-step-header';
+
+      const idx = document.createElement('span');
+      idx.className = 'inflection-step-index';
+      idx.textContent = String(i + 1);
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'inflection-step-name';
+      nameEl.textContent = name;
+
+      header.appendChild(idx);
+      header.appendChild(nameEl);
+      card.appendChild(header);
+
+      if (desc) {
+        const descEl = document.createElement('p');
+        descEl.className = 'inflection-step-desc';
+        descEl.textContent = desc;
+        card.appendChild(descEl);
+      }
+
+      details.appendChild(card);
+    });
 
     let expanded = false;
     row.onclick = (e) => {
       e.stopPropagation();
       expanded = !expanded;
       details.style.display = expanded ? 'block' : 'none';
-      // No longer need to toggle textContent as the label itself is the data
     };
 
     return { row, details };
@@ -1983,18 +2029,23 @@
     const termTags = result.term ? result.term.termTags : '';
     headSection.appendChild(createHeadwordNode(expression, reading, termTags));
 
-    // Ordering: Audio -> Add -> Open
+    // All icons go into a dedicated flex container so headword's flex:1 never
+    // crowds or clips them. Order: Audio (first/leftmost) → Add → Book.
+    const iconGroup = document.createElement('div');
+    iconGroup.className = 'entry-icon-group';
+
     if (_wordAudioEnabled) {
-      headSection.appendChild(createAudioButton(expression, reading));
+      iconGroup.appendChild(createAudioButton(expression, reading));
     }
 
     if (ankiEnabled) {
-      // Anki add button
       const ankiBtn = document.createElement('button');
       const isAlreadyAdded = existingSet.includes(expression);
-      ankiBtn.className = isAlreadyAdded ? 'anki-add-btn anki-added' : 'anki-add-btn';
-      ankiBtn.innerHTML = isAlreadyAdded ? ICONS.check_circle : ICONS.add_circle;
+      const shouldShowAdd = !isAlreadyAdded || ankiDupAction !== 'prevent';
+      ankiBtn.className = isAlreadyAdded && shouldShowAdd ? 'anki-add-btn anki-added' : 'anki-add-btn';
+      ankiBtn.innerHTML = isAlreadyAdded && shouldShowAdd ? ICONS.check_circle : ICONS.add_circle;
       ankiBtn.title = isAlreadyAdded ? 'Already in Anki' : 'Add to Anki';
+      ankiBtn.style.display = shouldShowAdd ? '' : 'none';
       ankiBtn.setAttribute('data-index', String(result.index || 0));
       ankiBtn.setAttribute('data-expression', expression);
       ankiBtn.setAttribute('data-glossary', '-1');
@@ -2009,26 +2060,28 @@
         }
       };
 
-      headSection.appendChild(ankiBtn);
+      iconGroup.appendChild(ankiBtn);
 
-      if (isAlreadyAdded) {
-        const bookBtn = document.createElement('button');
-        bookBtn.className = 'anki-open-btn';
-        bookBtn.innerHTML = ICONS.menu_book;
-        bookBtn.title = 'Open in Anki';
-        bookBtn.onclick = (e) => {
-          e.stopPropagation();
-          if (typeof AnkiBridge !== 'undefined') {
-            const entryIdx = ankiBtn.getAttribute('data-index');
-            const selectedDict = _selectedDictionaries[entryIdx] || '';
-            const selection = _lastSelection || window.getSelection().toString();
-            AnkiBridge.openInAnki(entryIdx, '-1', selectedDict, selection);
-          }
-        };
-        headSection.appendChild(bookBtn);
-      }
+      // Book always in DOM from the start — shown/hidden via display toggle in
+      // updateAnkiStatus, never appended later (keeps order stable).
+      const bookBtn = document.createElement('button');
+      bookBtn.className = 'anki-open-btn';
+      bookBtn.innerHTML = ICONS.menu_book;
+      bookBtn.title = 'Open in Anki';
+      bookBtn.style.display = isAlreadyAdded ? '' : 'none';
+      bookBtn.onclick = (e) => {
+        e.stopPropagation();
+        if (typeof AnkiBridge !== 'undefined') {
+          const entryIdx = ankiBtn.getAttribute('data-index');
+          const selectedDict = _selectedDictionaries[entryIdx] || '';
+          const selection = _lastSelection || window.getSelection().toString();
+          AnkiBridge.openInAnki(entryIdx, '-1', selectedDict, selection);
+        }
+      };
+      iconGroup.appendChild(bookBtn);
     }
 
+    headSection.appendChild(iconGroup);
     body.appendChild(headSection);
 
     const deinflection = createDeinflectionRow(result.process, result.term ? result.term.rules : '');
@@ -2409,56 +2462,20 @@
           const expr = btn.getAttribute('data-expression');
           const isAdded = existingSet.has(expr);
           
-          const wasAdded = btn.classList.contains('anki-added');
-          if (isAdded === wasAdded) return; 
+          const shouldShowAdd = !isAdded || _lastAnkiDupAction !== 'prevent';
+          btn.classList.toggle('anki-added', isAdded && shouldShowAdd);
+          btn.innerHTML = isAdded && shouldShowAdd ? ICONS.check_circle : ICONS.add_circle;
+          btn.title = isAdded ? 'Already in Anki' : 'Add to Anki';
+          btn.style.display = shouldShowAdd ? '' : 'none';
 
-          if (isAdded) {
-            btn.classList.add('anki-added');
-            btn.innerHTML = ICONS.check_circle;
-            btn.title = 'Already in Anki';
-            
-            // Add book icon if not present
-            const head = btn.parentElement;
-            if (head && !head.querySelector('.anki-open-btn')) {
-              const bookBtn = document.createElement('button');
-              bookBtn.className = 'anki-open-btn';
-              bookBtn.innerHTML = ICONS.menu_book;
-              bookBtn.title = 'Open in Anki';
-              bookBtn.onclick = (e) => {
-                e.stopPropagation();
-                if (typeof AnkiBridge !== 'undefined') {
-                  const entryIdx = btn.getAttribute('data-index');
-                  const selectedDict = _selectedDictionaries[entryIdx] || '';
-                  const selection = _lastSelection || window.getSelection().toString();
-                  AnkiBridge.openInAnki(entryIdx, '-1', selectedDict, selection);
-                }
-              };
-              head.appendChild(bookBtn);
+          // Book button is always in the DOM inside .entry-icon-group — just show/hide.
+          const iconGroup = btn.closest('.entry-icon-group');
+          const bookBtn = iconGroup ? iconGroup.querySelector('.anki-open-btn') : null;
+          if (bookBtn) {
+            if (btn.nextElementSibling !== bookBtn) {
+              iconGroup.insertBefore(btn, bookBtn);
             }
-          } else {
-            btn.classList.remove('anki-added');
-            btn.innerHTML = ICONS.add_circle;
-            btn.title = 'Add to Anki';
-            
-            // Remove book icon if present
-            const head = btn.parentElement;
-            const bookBtn = head ? head.querySelector('.anki-open-btn') : null;
-            if (bookBtn) bookBtn.remove();
-          }
-
-          // Enforce Ordering: Headword (first) -> Audio -> Anki Add -> Open in Anki
-          const head = btn.parentElement;
-          if (head) {
-            const headword = head.querySelector('.headword');
-            const audioBtn = head.querySelector('.word-audio-btn');
-            const openBtn = head.querySelector('.anki-open-btn');
-            
-            if (headword && head.firstChild !== headword) {
-              head.insertBefore(headword, head.firstChild);
-            }
-            if (audioBtn) head.appendChild(audioBtn);
-            head.appendChild(btn);
-            if (openBtn) head.appendChild(openBtn);
+            bookBtn.style.display = isAdded ? '' : 'none';
           }
         });
       } catch (e) {

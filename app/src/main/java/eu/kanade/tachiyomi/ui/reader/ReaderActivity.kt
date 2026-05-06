@@ -381,6 +381,9 @@ class ReaderActivity : BaseActivity() {
                     ReaderViewModel.Event.PageChanged -> {
                         displayRefreshHost.flash()
                     }
+                    ReaderViewModel.Event.InitializeOcrResources -> {
+                        ensureOcrResources()
+                    }
                     is ReaderViewModel.Event.SetOrientation -> {
                         setOrientation(event.orientation)
                     }
@@ -651,23 +654,37 @@ class ReaderActivity : BaseActivity() {
                 usePopup = false,
                 onTermMatched = { charCount ->
                     val viewer = viewModel.state.value.viewer
-                    if (viewer is WebtoonViewer) {
+                    val anchorRect: android.graphics.RectF? = if (viewer is WebtoonViewer) {
+                        var rect: android.graphics.RectF? = null
                         for (i in 0 until viewer.recycler.childCount) {
                             val h = viewer.recycler.getChildViewHolder(viewer.recycler.getChildAt(i)) as? WebtoonPageHolder
                             if (h?.hasActiveOcrBlock == true) {
-                                h.refineActiveOcrBlock(charCount)
+                                rect = h.refineActiveOcrBlock(charCount)
                                 break
                             }
                         }
+                        rect
                     } else if (viewer is PagerViewer) {
-                        // For PagerViewer, we need to find the active holder among pager children
+                        var rect: android.graphics.RectF? = null
                         for (i in 0 until viewer.pager.childCount) {
                             val h = viewer.pager.getChildAt(i) as? PagerPageHolder
                             if (h?.hasActiveOcrBlock == true) {
-                                h.refineActiveOcrBlock(charCount)
+                                rect = h.refineActiveOcrBlock(charCount)
                                 break
                             }
                         }
+                        rect
+                    } else {
+                        null
+                    }
+
+                    if (anchorRect != null) {
+                        ocrPopupState = ocrPopupState?.copy(
+                            anchorX = anchorRect.left,
+                            anchorY = anchorRect.top,
+                            anchorWidth = anchorRect.width(),
+                            anchorHeight = anchorRect.height(),
+                        )
                     }
                 },
             )

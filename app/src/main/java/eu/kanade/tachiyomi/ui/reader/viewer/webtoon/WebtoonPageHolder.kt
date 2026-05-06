@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.reader.viewer.webtoon
 
 import android.content.res.Resources
+import android.graphics.RectF
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
@@ -442,7 +443,7 @@ class WebtoonPageHolder(
     /**
      * Refine the active OCR block highlight to a specific character count.
      */
-    fun refineActiveOcrBlock(charCount: Int) {
-        frame.refineActiveOcrBlock(charCount)
+    fun refineActiveOcrBlock(charCount: Int): RectF? {
+        return frame.refineActiveOcrBlock(charCount)
     }
 }

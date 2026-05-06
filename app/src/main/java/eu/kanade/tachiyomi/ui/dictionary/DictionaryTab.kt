@@ -312,6 +312,8 @@ data object DictionaryTab : Tab {
             { resultIndex, glossaryIndex, selectedDict, popupSelection, forceOpen ->
                 val result = results.getOrNull(resultIndex)
                 if (result != null) {
+                    val frameIndex = activeTabIndex
+                    val expression = result.term.expression
                     scope.launch {
                         val ankiResult = AnkiCardCreator.addToAnki(
                             context = context,
@@ -328,6 +330,13 @@ data object DictionaryTab : Tab {
                             selectedDict = selectedDict,
                             forceOpen = forceOpen,
                         )
+                        if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
+                            val frame = lookupStack.getOrNull(frameIndex)
+                            if (frame?.results?.getOrNull(resultIndex)?.term?.expression == expression) {
+                                val newExisting = frame.existingExpressions + expression
+                                lookupStack[frameIndex] = frame.copy(existingExpressions = newExisting)
+                            }
+                        }
                         when (ankiResult) {
                             is AnkiResult.Success -> context.toast(MR.strings.anki_card_added)
                             is AnkiResult.CardExists -> context.toast(MR.strings.anki_card_exists)

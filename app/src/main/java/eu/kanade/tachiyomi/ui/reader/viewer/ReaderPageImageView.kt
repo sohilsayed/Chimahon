@@ -591,9 +591,17 @@ open class ReaderPageImageView @JvmOverloads constructor(
         onDismissOcrPopup?.invoke()
     }
 
-    fun refineActiveOcrBlock(charCount: Int) {
+    fun refineActiveOcrBlock(charCount: Int): RectF? {
         activeOcrMatchedCount = charCount
         (pageView as? SubsamplingScaleImageView)?.invalidate()
+
+        val block = activeOcrBlock ?: return null
+        return getTermRect(block, activeOcrCharOffset, charCount)
+    }
+
+    private fun getTermRect(block: OcrTextBlock, startOffset: Int, count: Int): RectF? {
+        val ssiv = pageView as? OcrSubsamplingImageView ?: return null
+        return ssiv.getMatchedWordRect(block, startOffset, count, ocrBoxScale)
     }
 
     override fun onDetachedFromWindow() {

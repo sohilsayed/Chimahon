@@ -714,8 +714,24 @@ internal fun getDictionaryBootstrapHtml(
             "#%06X".format(0xFFFFFF and colorScheme.surface.toArgb())
         }
         val secondaryHex = "#%06X".format(0xFFFFFF and colorScheme.onSurfaceVariant.toArgb())
-        val borderHex = "#%06X".format(0xFFFFFF and colorScheme.outlineVariant.toArgb())
-        val hoverHex = "#%06X".format(0xFFFFFF and colorScheme.surfaceVariant.toArgb())
+        // In AMOLED dark mode, surfaceVariant and outlineVariant are NOT overridden by
+        // getColorScheme() (overrideDarkSurfaceContainers=false), so they stay tinted.
+        // Force them to pure-black derivatives so the popup is truly black, not grey.
+        val borderHex = if (isAmoled && isDark == true) {
+            "rgba(255,255,255,0.10)"
+        } else {
+            "#%06X".format(0xFFFFFF and colorScheme.outlineVariant.toArgb())
+        }
+        val hoverHex = if (isAmoled && isDark == true) {
+            "rgba(255,255,255,0.07)"
+        } else {
+            "#%06X".format(0xFFFFFF and colorScheme.surfaceVariant.toArgb())
+        }
+        val tabBgHex = if (isAmoled && isDark == true) {
+            "#0d0d0d"
+        } else {
+            "#%06X".format(0xFFFFFF and colorScheme.surfaceContainer.toArgb())
+        }
         """
           <style id="dynamic-theme">
             :root, :root[data-theme="dark"], :root[data-theme="light"] {
@@ -726,6 +742,7 @@ internal fun getDictionaryBootstrapHtml(
                 --secondary: $secondaryHex;
                 --border: $borderHex;
                 --hover-bg: $hoverHex;
+                --tab-bg: $tabBgHex;
                 --pronunciation-annotation-color: $fgHex;
             }
           </style>
