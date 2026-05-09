@@ -204,17 +204,27 @@ class PlayerActivity : ComponentActivity() {
                 logcat(LogPriority.ERROR, tag = "Player") { "Episode not loaded after init" }
                 return@launchIO
             }
-            val url = episode.url
-            logcat(LogPriority.DEBUG, tag = "Player") { "Episode URL: $url" }
-            if (url.isNotBlank()) {
-                val resumePos = state.currentPositionSec
-                    .takeIf { it > 0 } ?: episode.lastSecondSeen
-                val playUrl = resolvePlaybackUrl(url)
-                logcat(LogPriority.DEBUG, tag = "Player") { "Playing: $playUrl (resume=$resumePos)" }
-                withContext(Dispatchers.Main) {
-                    view.playFile(playUrl, resumePos)
-                    logcat(LogPriority.DEBUG, tag = "Player") { "playFile called" }
+            val resolvedVideo = state.resolvedVideo
+            val url = resolvedVideo?.videoUrl?.takeIf { it.isNotBlank() }
+                ?: episode.url.takeIf { PlayerViewModel.isPlayableScheme(it) }
+            logcat(LogPriority.DEBUG, tag = "Player") { "Episode URL: ${episode.url}, resolved: ${resolvedVideo?.videoUrl}" }
+            if (url.isNullOrBlank()) {
+                logcat(LogPriority.ERROR, tag = "Player") { "No playable video URL found for episode" }
+                return@launchIO
+            }
+            val resumePos = state.currentPositionSec
+                .takeIf { it > 0 } ?: episode.lastSecondSeen
+            val playUrl = resolvePlaybackUrl(url)
+            val headers = resolvedVideo?.headers?.let { h ->
+                (0 until h.size).associate { i -> h.name(i) to h.value(i) }
+            }
+            logcat(LogPriority.DEBUG, tag = "Player") { "Playing: $playUrl (resume=$resumePos, headers=${headers?.keys})" }
+            withContext(Dispatchers.Main) {
+                view.playFile(playUrl, resumePos, headers)
+                resolvedVideo?.subtitleTracks?.forEach { track ->
+                    view.addSubtitleTrack(track.url, track.lang)
                 }
+                logcat(LogPriority.DEBUG, tag = "Player") { "playFile called, ${resolvedVideo?.subtitleTracks?.size ?: 0} subtitle tracks added" }
             }
         }
     }

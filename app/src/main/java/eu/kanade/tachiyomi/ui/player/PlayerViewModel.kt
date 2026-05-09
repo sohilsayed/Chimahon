@@ -8,8 +8,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import chimahon.DictionaryRepository
+import eu.kanade.tachiyomi.animesource.AnimeSource
+import eu.kanade.tachiyomi.animesource.model.SEpisode
+import eu.kanade.tachiyomi.animesource.model.Video
+import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
+import tachiyomi.domain.animesource.service.AnimeSourceManager
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -52,6 +57,7 @@ class PlayerViewModel @JvmOverloads constructor(
     private val episodeRepository: EpisodeRepository = Injekt.get(),
     private val dictionaryRepository: DictionaryRepository = Injekt.get(),
     private val application: Application = Injekt.get(),
+    private val animeSourceManager: AnimeSourceManager = Injekt.get(),
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(
@@ -110,14 +116,113 @@ class PlayerViewModel @JvmOverloads constructor(
                 eventChannel.send(Event.Error("Anime or episode not found"))
                 return
             }
-            mutableState.update { it.copy(anime = anime, episode = episode, isLoading = false) }
+
+            var resolvedVideo: Video? = null
+            if (anime.source != LOCAL_ANIME_SOURCE_ID) {
+                resolvedVideo = resolveVideoFromSource(anime.source, episode)
+            }
+
+            mutableState.update {
+                it.copy(
+                    anime = anime,
+                    episode = episode,
+                    resolvedVideo = resolvedVideo,
+                    isLoading = false,
+                )
+            }
         } catch (e: Exception) {
             logcat(LogPriority.ERROR, e) { "Failed to load anime/episode" }
             eventChannel.send(Event.Error(e.message ?: "Unknown error"))
         }
     }
 
+    private suspend fun resolveVideoFromSource(sourceId: Long, episode: Episode): Video? {
+        return withIOContext {
+            try {
+                val source = animeSourceManager.get(sourceId) ?: return@withIOContext null
+                val sEpisode = SEpisode.create().apply {
+                    url = episode.url
+                    name = episode.name
+                }
+
+                val videos = try {
+                    source.getVideoList(sEpisode)
+                } catch (_: Exception) {
+                    emptyList()
+                }
+
+                resolveFirstPlayableVideo(source, videos)?.let {
+                    return@withIOContext ensureHeaders(it, source)
+                }
+
+                try {
+                    val hosters = source.getHosterList(sEpisode)
+                    for (hoster in hosters) {
+                        val hosterVideos = hoster.videoList ?: try {
+                            source.getVideoList(hoster)
+                        } catch (_: Throwable) {
+                            emptyList()
+                        }
+                        resolveFirstPlayableVideo(source, hosterVideos)?.let {
+                            return@withIOContext ensureHeaders(it, source)
+                        }
+                    }
+                } catch (e: Throwable) {
+                    logcat(LogPriority.WARN, e) { "Hoster list resolution failed" }
+                }
+
+                null
+            } catch (e: Exception) {
+                logcat(LogPriority.ERROR, e) { "Failed to resolve video URL from source" }
+                null
+            }
+        }
+    }
+
+    private fun ensureHeaders(video: Video, source: AnimeSource): Video {
+        if (video.headers != null) return video
+        val defaultHeaders = (source as? AnimeHttpSource)?.headers ?: return video
+        return video.copy(headers = defaultHeaders)
+    }
+
+    private suspend fun resolveFirstPlayableVideo(source: AnimeSource, videos: List<Video>): Video? {
+        if (videos.isEmpty()) return null
+        val httpSource = source as? AnimeHttpSource
+
+        for (video in videos) {
+            var resolved = video
+
+            if (httpSource != null) {
+                resolved = try {
+                    httpSource.resolveVideo(video) ?: continue
+                } catch (_: Exception) {
+                    video
+                }
+            }
+
+            if (resolved.videoUrl.isBlank() && resolved.videoPageUrl.isNotBlank() && httpSource != null) {
+                val url = try {
+                    httpSource.getVideoUrl(resolved)
+                } catch (_: Throwable) {
+                    null
+                }
+                if (!url.isNullOrBlank()) {
+                    resolved = resolved.copy(videoUrl = url)
+                }
+            }
+
+            val url = resolved.videoUrl
+            if (url.isNotBlank() && isStreamableUrl(url)) {
+                return resolved
+            }
+        }
+        return null
+    }
+
+    private fun isStreamableUrl(url: String): Boolean = isPlayableScheme(url)
+
     fun updatePlaybackState(isPlaying: Boolean) {
+        if (isPlaying == mutableState.value.isPlaying) return
         mutableState.update { it.copy(isPlaying = isPlaying) }
     }
 
@@ -129,6 +234,7 @@ class PlayerViewModel @JvmOverloads constructor(
     }
 
     fun updateDuration(durationSec: Long) {
+        if (durationSec == mutableState.value.durationSec) return
         mutableState.update { it.copy(durationSec = durationSec) }
     }
 
@@ -315,6 +421,7 @@ class PlayerViewModel @JvmOverloads constructor(
     data class State(
         val anime: Anime? = null,
         val episode: Episode? = null,
+        val resolvedVideo: Video? = null,
         val isLoading: Boolean = true,
         val isPlaying: Boolean = false,
         val currentPositionSec: Long = 0,
@@ -340,5 +447,11 @@ class PlayerViewModel @JvmOverloads constructor(
         const val KEY_ANIME_ID = "anime_id"
         const val KEY_EPISODE_ID = "episode_id"
         const val LOCAL_ANIME_SOURCE_ID = 0L
+        private val STREAMABLE_SCHEMES = setOf("http", "https", "rtmp", "rtsp", "file", "content")
+
+        fun isPlayableScheme(url: String): Boolean {
+            val scheme = url.substringBefore("://").lowercase()
+            return scheme in STREAMABLE_SCHEMES
+        }
     }
 }

@@ -1,5 +1,8 @@
 package eu.kanade.domain
 
+import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionLanguages
+import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionSources
+import eu.kanade.domain.animeextension.interactor.GetAnimeExtensionsByType
 import eu.kanade.domain.chapter.interactor.GetAvailableScanlators
 import eu.kanade.domain.chapter.interactor.SetReadStatus
 import eu.kanade.domain.chapter.interactor.SyncChaptersWithSource
@@ -25,7 +28,15 @@ import eu.kanade.domain.track.interactor.AddTracks
 import eu.kanade.domain.track.interactor.RefreshTracks
 import eu.kanade.domain.track.interactor.SyncChapterProgressWithTrack
 import eu.kanade.domain.track.interactor.TrackChapter
+import mihon.data.repository.AnimeExtensionRepoRepositoryImpl
 import mihon.data.repository.ExtensionRepoRepositoryImpl
+import mihon.domain.animeextensionrepo.interactor.CreateAnimeExtensionRepo
+import mihon.domain.animeextensionrepo.interactor.DeleteAnimeExtensionRepo
+import mihon.domain.animeextensionrepo.interactor.GetAnimeExtensionRepo
+import mihon.domain.animeextensionrepo.interactor.GetAnimeExtensionRepoCount
+import mihon.domain.animeextensionrepo.interactor.ReplaceAnimeExtensionRepo
+import mihon.domain.animeextensionrepo.interactor.UpdateAnimeExtensionRepo
+import mihon.domain.animeextensionrepo.repository.AnimeExtensionRepoRepository
 import mihon.domain.chapter.interactor.FilterChaptersForDownload
 import mihon.domain.extensionrepo.interactor.CreateExtensionRepo
 import mihon.domain.extensionrepo.interactor.DeleteExtensionRepo
@@ -37,6 +48,7 @@ import mihon.domain.extensionrepo.repository.ExtensionRepoRepository
 import mihon.domain.extensionrepo.service.ExtensionRepoService
 import mihon.domain.migration.usecases.MigrateMangaUseCase
 import mihon.domain.upcoming.interactor.GetUpcomingManga
+import tachiyomi.data.animesource.StubAnimeSourceRepositoryImpl
 import tachiyomi.data.category.CategoryRepositoryImpl
 import tachiyomi.data.chapter.ChapterRepositoryImpl
 import tachiyomi.data.history.HistoryRepositoryImpl
@@ -46,6 +58,7 @@ import tachiyomi.data.source.SourceRepositoryImpl
 import tachiyomi.data.source.StubSourceRepositoryImpl
 import tachiyomi.data.track.TrackRepositoryImpl
 import tachiyomi.data.updates.UpdatesRepositoryImpl
+import tachiyomi.domain.animesource.repository.StubAnimeSourceRepository
 import tachiyomi.domain.category.interactor.CreateCategoryWithName
 import tachiyomi.domain.category.interactor.DeleteCategory
 import tachiyomi.domain.category.interactor.GetCategories
@@ -205,6 +218,19 @@ class DomainModule : InjektModule {
         addFactory { DeleteExtensionRepo(get()) }
         addFactory { ReplaceExtensionRepo(get()) }
         addFactory { UpdateExtensionRepo(get(), get()) }
+
+        addSingletonFactory<AnimeExtensionRepoRepository> { AnimeExtensionRepoRepositoryImpl(get()) }
+        addSingletonFactory<StubAnimeSourceRepository> { StubAnimeSourceRepositoryImpl(get()) }
+        addFactory { GetAnimeExtensionRepo(get()) }
+        addFactory { GetAnimeExtensionRepoCount(get()) }
+        addFactory { CreateAnimeExtensionRepo(get(), get()) }
+        addFactory { DeleteAnimeExtensionRepo(get()) }
+        addFactory { ReplaceAnimeExtensionRepo(get()) }
+        addFactory { UpdateAnimeExtensionRepo(get(), get()) }
+        addFactory { GetAnimeExtensionsByType(get(), get()) }
+        addFactory { GetAnimeExtensionLanguages(get(), get()) }
+        addFactory { GetAnimeExtensionSources(get()) }
+
         addFactory { ToggleIncognito(get()) }
         addFactory { GetIncognitoState(get(), get(), get()) }
     }

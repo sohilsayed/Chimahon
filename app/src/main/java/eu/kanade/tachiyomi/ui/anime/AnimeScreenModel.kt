@@ -3,22 +3,28 @@ package eu.kanade.tachiyomi.ui.anime
 import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
+import eu.kanade.tachiyomi.animesource.model.SAnime
+import eu.kanade.tachiyomi.animesource.model.SEpisode
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import logcat.LogPriority
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.core.common.util.lang.launchNonCancellable
+import tachiyomi.core.common.util.system.logcat
 import tachiyomi.domain.anime.interactor.GetAnime
 import tachiyomi.domain.anime.interactor.SetAnimeEpisodeFlags
 import tachiyomi.domain.anime.interactor.UpdateAnime
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.anime.model.AnimeUpdate
 import tachiyomi.domain.anime.repository.AnimeRepository
+import tachiyomi.domain.animesource.service.AnimeSourceManager
 import tachiyomi.domain.episode.interactor.GetEpisodesByAnimeId
 import tachiyomi.domain.episode.interactor.SetSeenStatus
 import tachiyomi.domain.episode.interactor.UpdateEpisode
 import tachiyomi.domain.episode.model.Episode
 import tachiyomi.domain.episode.model.EpisodeUpdate
+import tachiyomi.domain.episode.repository.EpisodeRepository
 import tachiyomi.domain.manga.model.applyFilter
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
@@ -32,9 +38,15 @@ class AnimeScreenModel(
     private val setSeenStatus: SetSeenStatus = Injekt.get(),
     private val setAnimeEpisodeFlags: SetAnimeEpisodeFlags = Injekt.get(),
     private val animeRepository: AnimeRepository = Injekt.get(),
+    private val episodeRepository: EpisodeRepository = Injekt.get(),
+    private val animeSourceManager: AnimeSourceManager = Injekt.get(),
 ) : StateScreenModel<AnimeScreenModel.State>(State.Loading) {
 
     init {
+        screenModelScope.launchIO {
+            fetchEpisodesFromSourceIfNeeded()
+        }
+
         screenModelScope.launchIO {
             combine(
                 getAnime.subscribe(animeId),
@@ -57,6 +69,51 @@ class AnimeScreenModel(
         }
     }
 
+    private suspend fun fetchEpisodesFromSourceIfNeeded() {
+        val dbEpisodes = getEpisodesByAnimeId.await(animeId)
+        if (dbEpisodes.isNotEmpty()) return
+        syncEpisodesFromSource()
+    }
+
+    private suspend fun syncEpisodesFromSource() {
+        val anime = getAnime.await(animeId) ?: return
+        val source = animeSourceManager.get(anime.source) ?: return
+
+        try {
+            val sAnime = SAnime.create().apply {
+                url = anime.url
+                title = anime.title
+            }
+            val sourceEpisodes = source.getEpisodeList(sAnime)
+            val existingEpisodes = getEpisodesByAnimeId.await(animeId)
+            val existingUrls = existingEpisodes.map { it.url }.toSet()
+
+            val newEpisodes = sourceEpisodes
+                .filter { it.url !in existingUrls }
+                .mapIndexed { index, sEpisode ->
+                    episodeFromSource(animeId, sEpisode, (existingEpisodes.size + index).toLong())
+                }
+            if (newEpisodes.isNotEmpty()) {
+                episodeRepository.addAll(newEpisodes)
+            }
+        } catch (e: Exception) {
+            logcat(LogPriority.ERROR, e) { "Failed to fetch episodes from source" }
+        }
+    }
+
+    private fun episodeFromSource(animeId: Long, sEpisode: SEpisode, sourceOrder: Long): Episode {
+        return Episode.create().copy(
+            animeId = animeId,
+            url = sEpisode.url,
+            name = sEpisode.name,
+            dateUpload = sEpisode.date_upload,
+            episodeNumber = sEpisode.episode_number.toDouble(),
+            scanlator = sEpisode.scanlator,
+            sourceOrder = sourceOrder,
+            dateFetch = System.currentTimeMillis(),
+        )
+    }
+
     private fun applySort(anime: Anime, episodes: List<Episode>): List<Episode> {
         val comparator: Comparator<Episode> = when (anime.sorting) {
             Anime.EPISODE_SORTING_NUMBER -> compareBy { it.episodeNumber }
@@ -75,6 +132,12 @@ class AnimeScreenModel(
         return episodes.filter { episode ->
             applyFilter(anime.unseenFilter) { !episode.seen } &&
                 applyFilter(anime.bookmarkedFilter) { episode.bookmark }
+        }
+    }
+
+    fun refreshEpisodes() {
+        screenModelScope.launchIO {
+            syncEpisodesFromSource()
         }
     }
 

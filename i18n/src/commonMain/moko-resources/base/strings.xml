@@ -51,6 +51,8 @@
     <string name="label_stats">Statistics</string>
     <string name="label_migration">Migrate</string>
     <string name="label_extensions">Extensions</string>
+    <string name="label_anime_extensions">Anime Extensions</string>
+    <string name="label_anime_sources">Anime Sources</string>
     <string name="label_extension_info">Extension info</string>
     <string name="label_help">Help</string>
     <string name="label_default">Default</string>
@@ -1102,6 +1104,7 @@
     <string name="channel_new_chapters">Chapter updates</string>
     <string name="channel_app_updates">App updates</string>
     <string name="channel_ext_updates">Extension updates</string>
+    <string name="channel_anime_ext_updates">Anime extension updates</string>
 
     <!-- S Pen actions -->
     <string name="spen_previous_page">Previous page</string>

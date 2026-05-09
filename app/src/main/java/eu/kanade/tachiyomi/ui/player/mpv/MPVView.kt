@@ -92,18 +92,46 @@ class MPVView(context: Context) : SurfaceView(context), SurfaceHolder.Callback {
         MPVLib.detachSurface()
     }
 
-    fun playFile(url: String, startPositionSec: Long = 0) {
+    fun playFile(url: String, startPositionSec: Long = 0, headers: Map<String, String>? = null) {
         if (!isInitialized) {
             logcat(LogPriority.ERROR) { "playFile called but MPV not initialized" }
             return
         }
         logcat(LogPriority.DEBUG, tag = "Player") { "MPV loadfile: $url start=$startPositionSec" }
+        applyHeaders(headers)
         if (startPositionSec > 0) {
             MPVLib.setOptionString("start", "+$startPositionSec")
         } else {
             MPVLib.setOptionString("start", "none")
         }
         MPVLib.command(arrayOf("loadfile", url))
+    }
+
+    private fun applyHeaders(headers: Map<String, String>?) {
+        val ua = headers?.entries?.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value ?: ""
+        val ref = headers?.entries?.firstOrNull { it.key.equals("Referer", ignoreCase = true) }?.value ?: ""
+
+        MPVLib.setOptionString("user-agent", ua)
+        MPVLib.setOptionString("referrer", ref)
+
+        val extraHeaders = headers?.filterKeys { key ->
+            !key.equals("User-Agent", ignoreCase = true) && !key.equals("Referer", ignoreCase = true)
+        }.orEmpty()
+
+        if (extraHeaders.isEmpty()) {
+            MPVLib.setOptionString("http-header-fields", "")
+            MPVLib.setOptionString("demuxer-lavf-o", "")
+        } else {
+            val headerFields = extraHeaders.entries.joinToString(",") { "${it.key}: ${it.value}" }
+            MPVLib.setOptionString("http-header-fields", headerFields)
+            val ffmpegHeaders = extraHeaders.entries.joinToString("\r\n") { "${it.key}: ${it.value}" } + "\r\n"
+            MPVLib.setOptionString("demuxer-lavf-o", "headers=$ffmpegHeaders")
+        }
+    }
+
+    fun addSubtitleTrack(url: String, lang: String) {
+        if (!isInitialized) return
+        MPVLib.command(arrayOf("sub-add", url, "auto", lang, lang))
     }
 
     val timePos: Int?
