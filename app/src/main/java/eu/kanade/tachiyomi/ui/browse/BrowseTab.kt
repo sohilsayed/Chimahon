@@ -144,7 +144,7 @@ data object BrowseTab : Tab {
         val onChangeSearchQuery: (String?) -> Unit = when (currentTabTitleRes) {
             MR.strings.label_anime_extensions -> animeExtensionsScreenModel::search
             MR.strings.label_extensions -> extensionsScreenModel::search
-            else -> {}
+            else -> { _ -> }
         }
         TabbedScreen(
             titleRes = MR.strings.browse,

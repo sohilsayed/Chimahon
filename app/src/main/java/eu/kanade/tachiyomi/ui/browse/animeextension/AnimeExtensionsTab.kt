@@ -18,6 +18,7 @@ import eu.kanade.presentation.components.AppBar
 import eu.kanade.presentation.components.TabContent
 import eu.kanade.presentation.more.settings.screen.browse.AnimeExtensionReposScreen
 import eu.kanade.tachiyomi.animeextension.model.AnimeExtension
+import eu.kanade.tachiyomi.ui.browse.animeextension.details.AnimeExtensionDetailsScreen
 import eu.kanade.tachiyomi.ui.webview.WebViewScreen
 import eu.kanade.tachiyomi.util.system.isPackageInstalled
 import kotlinx.collections.immutable.persistentListOf
@@ -39,6 +40,10 @@ fun animeExtensionsTab(
         badgeNumber = state.updates.takeIf { it > 0 },
         searchEnabled = true,
         actions = persistentListOf(
+            AppBar.OverflowAction(
+                title = stringResource(MR.strings.action_filter),
+                onClick = { navigator.push(AnimeExtensionFilterScreen()) },
+            ),
             AppBar.OverflowAction(
                 title = stringResource(MR.strings.action_webview_refresh),
                 onClick = animeExtensionsScreenModel::findAvailableExtensions,
@@ -82,7 +87,7 @@ fun animeExtensionsTab(
                     }
                 },
                 onInstallExtension = animeExtensionsScreenModel::installExtension,
-                onOpenExtension = { /* TODO: AnimeExtensionDetailsScreen */ },
+                onOpenExtension = { navigator.push(AnimeExtensionDetailsScreen(it.pkgName)) },
                 onTrustExtension = { animeExtensionsScreenModel.trustExtension(it) },
                 onUninstallExtension = { animeExtensionsScreenModel.uninstallExtension(it) },
                 onUpdateExtension = animeExtensionsScreenModel::updateExtension,
