@@ -6,6 +6,8 @@ import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.tachiyomi.animesource.AnimeCatalogueSource
 import eu.kanade.tachiyomi.animesource.model.AnimeFilterList
 import eu.kanade.tachiyomi.animesource.model.SAnime
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.update
 import tachiyomi.core.common.util.lang.launchIO
 import tachiyomi.domain.anime.interactor.GetAnime
 import tachiyomi.domain.anime.model.Anime
@@ -24,12 +26,18 @@ class BrowseAnimeSourceScreenModel(
     private val source: AnimeCatalogueSource?
         get() = animeSourceManager.get(sourceId) as? AnimeCatalogueSource
 
+    @Volatile
     private var currentPage = 1
+    @Volatile
+    private var currentQuery: String? = null
     @Volatile
     private var isLoadingMore = false
 
+    private var browseJob: Job? = null
+
     fun loadPopular() {
-        screenModelScope.launchIO {
+        browseJob?.cancel()
+        browseJob = screenModelScope.launchIO {
             mutableState.value = State(isLoading = true)
             try {
                 val source = source ?: run {
@@ -38,6 +46,7 @@ class BrowseAnimeSourceScreenModel(
                 }
                 val result = source.getPopularAnime(1)
                 currentPage = 1
+                currentQuery = null
                 mutableState.value = State(
                     items = result.animes,
                     hasNextPage = result.hasNextPage,
@@ -53,7 +62,8 @@ class BrowseAnimeSourceScreenModel(
             loadPopular()
             return
         }
-        screenModelScope.launchIO {
+        browseJob?.cancel()
+        browseJob = screenModelScope.launchIO {
             mutableState.value = State(isLoading = true)
             try {
                 val source = source ?: run {
@@ -62,6 +72,7 @@ class BrowseAnimeSourceScreenModel(
                 }
                 val result = source.getSearchAnime(1, query, AnimeFilterList())
                 currentPage = 1
+                currentQuery = query
                 mutableState.value = State(
                     items = result.animes,
                     hasNextPage = result.hasNextPage,
@@ -74,22 +85,27 @@ class BrowseAnimeSourceScreenModel(
 
     fun loadNextPage() {
         if (isLoadingMore) return
-        val currentState = state.value
-        if (!currentState.hasNextPage) return
+        if (!state.value.hasNextPage) return
 
         isLoadingMore = true
         screenModelScope.launchIO {
             try {
                 val source = source ?: return@launchIO
                 val nextPage = currentPage + 1
-                val result = source.getPopularAnime(nextPage)
+                val query = currentQuery
+                val result = if (query != null) {
+                    source.getSearchAnime(nextPage, query, AnimeFilterList())
+                } else {
+                    source.getPopularAnime(nextPage)
+                }
                 currentPage = nextPage
-                mutableState.value = currentState.copy(
-                    items = currentState.items + result.animes,
-                    hasNextPage = result.hasNextPage,
-                )
+                mutableState.update {
+                    it.copy(
+                        items = it.items + result.animes,
+                        hasNextPage = result.hasNextPage,
+                    )
+                }
             } catch (_: Exception) {
-                // Silently fail for pagination
             } finally {
                 isLoadingMore = false
             }

@@ -3,6 +3,7 @@ package tachiyomi.domain.anime.repository
 import kotlinx.coroutines.flow.Flow
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.anime.model.AnimeUpdate
+import tachiyomi.domain.library.model.LibraryAnime
 
 interface AnimeRepository {
 
@@ -17,6 +18,12 @@ interface AnimeRepository {
     suspend fun getFavorites(): List<Anime>
 
     fun getFavoritesBySourceId(sourceId: Long): Flow<List<Anime>>
+
+    suspend fun getLibraryAnime(): List<LibraryAnime>
+
+    fun getLibraryAnimeAsFlow(): Flow<List<LibraryAnime>>
+
+    suspend fun setAnimeCategories(animeId: Long, categoryIds: List<Long>)
 
     suspend fun update(update: AnimeUpdate): Boolean
 

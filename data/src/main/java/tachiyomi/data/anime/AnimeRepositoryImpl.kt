@@ -9,6 +9,7 @@ import tachiyomi.data.StringListColumnAdapter
 import tachiyomi.domain.anime.model.Anime
 import tachiyomi.domain.anime.model.AnimeUpdate
 import tachiyomi.domain.anime.repository.AnimeRepository
+import tachiyomi.domain.library.model.LibraryAnime
 
 class AnimeRepositoryImpl(
     private val handler: DatabaseHandler,
@@ -48,6 +49,23 @@ class AnimeRepositoryImpl(
 
     override fun getFavoritesBySourceId(sourceId: Long): Flow<List<Anime>> {
         return handler.subscribeToList { animesQueries.getFavoriteBySourceId(sourceId, AnimeMapper::mapAnime) }
+    }
+
+    override suspend fun getLibraryAnime(): List<LibraryAnime> {
+        return handler.awaitList { animeLibraryViewQueries.library(AnimeLibraryMapper::mapLibraryAnime) }
+    }
+
+    override fun getLibraryAnimeAsFlow(): Flow<List<LibraryAnime>> {
+        return handler.subscribeToList { animeLibraryViewQueries.library(AnimeLibraryMapper::mapLibraryAnime) }
+    }
+
+    override suspend fun setAnimeCategories(animeId: Long, categoryIds: List<Long>) {
+        handler.await(inTransaction = true) {
+            animes_categoriesQueries.deleteAnimeCategoryByAnimeId(animeId)
+            categoryIds.forEach { categoryId ->
+                animes_categoriesQueries.insert(animeId, categoryId)
+            }
+        }
     }
 
     override suspend fun update(update: AnimeUpdate): Boolean {
