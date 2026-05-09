@@ -49,6 +49,7 @@ fun LibraryToolbar(
     onSearchQueryChange: (String?) -> Unit,
     scrollBehavior: TopAppBarScrollBehavior?,
     onInvalidateDownloadCache: (Context) -> Unit,
+    onClickEditCategories: (() -> Unit)? = null,
 ) = when {
     selectedCount > 0 -> LibrarySelectionToolbar(
         selectedCount = selectedCount,
@@ -72,6 +73,7 @@ fun LibraryToolbar(
         // SY <--
         scrollBehavior = scrollBehavior,
         onInvalidateDownloadCache = onInvalidateDownloadCache,
+        onClickEditCategories = onClickEditCategories,
     )
 }
 
@@ -92,6 +94,7 @@ private fun LibraryRegularToolbar(
     // SY <--
     scrollBehavior: TopAppBarScrollBehavior?,
     onInvalidateDownloadCache: (Context) -> Unit,
+    onClickEditCategories: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val pillAlpha = if (isSystemInDarkTheme()) 0.12f else 0.08f
@@ -144,6 +147,14 @@ private fun LibraryRegularToolbar(
                         },
                     ),
                 ).builder().apply {
+                    if (onClickEditCategories != null) {
+                        add(
+                            AppBar.OverflowAction(
+                                title = stringResource(MR.strings.action_edit_categories),
+                                onClick = onClickEditCategories,
+                            ),
+                        )
+                    }
                     // SY -->
                     if (onClickSyncExh != null) {
                         add(
