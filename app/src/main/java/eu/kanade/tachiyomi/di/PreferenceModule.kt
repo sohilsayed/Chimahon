@@ -11,6 +11,7 @@ import eu.kanade.tachiyomi.core.security.PrivacyPreferences
 import eu.kanade.tachiyomi.core.security.SecurityPreferences
 import eu.kanade.tachiyomi.network.NetworkPreferences
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
+import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import com.canopus.chimareader.data.NovelReaderSettings
 import eu.kanade.tachiyomi.util.system.isDebugBuildType
@@ -62,6 +63,9 @@ class PreferenceModule(val app: Application) : InjektModule {
         // KMK <--
         addSingletonFactory {
             ReaderPreferences(get())
+        }
+        addSingletonFactory {
+            PlayerPreferences(get())
         }
         addSingletonFactory {
             DictionaryPreferences(get())

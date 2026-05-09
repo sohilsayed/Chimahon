@@ -33,6 +33,13 @@
     <string name="label_data_storage">Data and storage</string>
     <string name="label_dictionary">Dictionary</string>
     <string name="label_novels">Novels</string>
+    <string name="label_anime">Anime</string>
+    <string name="anime_empty_message">No anime yet — tap + to open a video</string>
+    <string name="action_open_video">Open video</string>
+    <string name="action_pick_local_file">Pick local file</string>
+    <string name="action_open">Open</string>
+    <string name="label_video_url">Video URL</string>
+    <string name="action_play">Play</string>
     <string name="novel_missing_file">Missing File — tap to import</string>
     <string name="backup_option_novels">Novel progress &amp; stats</string>
     <string name="label_stats">Statistics</string>

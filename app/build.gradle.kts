@@ -139,6 +139,16 @@ android {
                 "libimagedecoder",
                 "libquickjs",
                 "libsqlite3x",
+                "libmpv",
+                "libavcodec",
+                "libavformat",
+                "libswscale",
+                "libavutil",
+                "libswresample",
+                "libavfilter",
+                "libass",
+                "libdav1d",
+                "libplacebo",
             )
                 .map { "**/$it.so" }
         }
@@ -344,6 +354,11 @@ dependencies {
     implementation(libs.leakcanary.plumber)
 
     testImplementation(kotlinx.coroutines.test)
+
+    // MPV player
+    implementation(libs.aniyomi.mpv)
+    implementation(libs.ffmpeg.kit)
+    implementation(libs.smart.exception.java)
 
     // SY -->
     // Better logging (EH)

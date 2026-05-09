@@ -16,6 +16,8 @@ materialKolor = "5.0.0-alpha06"
 image-cropper = "4.7.0"
 datastore = "1.1.2"
 media3 = "1.5.1"
+aniyomi-mpv-lib = "1.17.n"
+ffmpeg-kit = "1.17"
 
 
 [libraries]
@@ -77,6 +79,10 @@ palette-ktx = "androidx.palette:palette-ktx:1.0.0"
 haze = "dev.chrisbanes.haze:haze:1.7.2"
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+
+aniyomi-mpv = { module = "com.github.aniyomiorg:aniyomi-mpv-lib", version.ref = "aniyomi-mpv-lib" }
+ffmpeg-kit = { module = "com.github.jmir1:ffmpeg-kit", version.ref = "ffmpeg-kit" }
+smart-exception-java = "com.arthenica:smart-exception-java:0.2.1"
 
 
 swipe = "me.saket.swipe:swipe:1.3.0"
