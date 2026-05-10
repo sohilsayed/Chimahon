@@ -4,12 +4,16 @@ import androidx.compose.runtime.Immutable
 import cafe.adriel.voyager.core.model.StateScreenModel
 import cafe.adriel.voyager.core.model.screenModelScope
 import eu.kanade.core.util.addOrRemove
+import eu.kanade.tachiyomi.animesource.AnimeSource
 import eu.kanade.tachiyomi.animesource.model.SAnime
 import eu.kanade.tachiyomi.animesource.model.SEpisode
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
 import eu.kanade.tachiyomi.data.animedownload.model.AnimeDownload
+import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
+import eu.kanade.tachiyomi.source.isSourceForTorrents
+import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
@@ -223,6 +227,7 @@ class AnimeScreenModel(
     private suspend fun fetchAnimeFromSource() {
         val anime = getAnime.await(animeId) ?: return
         val source = animeSourceManager.get(anime.source) ?: return
+        prepareTorrentSourceIfNeeded(source)
 
         try {
             val sAnime = SAnime.create().apply {
@@ -257,6 +262,7 @@ class AnimeScreenModel(
     private suspend fun syncEpisodesFromSource() {
         val anime = getAnime.await(animeId) ?: return
         val source = animeSourceManager.get(anime.source) ?: return
+        prepareTorrentSourceIfNeeded(source)
 
         try {
             val sAnime = SAnime.create().apply {
@@ -451,6 +457,7 @@ class AnimeScreenModel(
                 logcat(LogPriority.ERROR) { "Source is not AnimeHttpSource, cannot download" }
                 return@launchIO
             }
+            prepareTorrentSourceIfNeeded(httpSource)
 
             mutableState.update { s ->
                 if (s is State.Success) s.copy(dialog = Dialog.DownloadLoading(episode)) else s
@@ -562,6 +569,14 @@ class AnimeScreenModel(
 
                 if (resolved.videoUrl.isNotBlank()) resolved else null
             }
+        }
+    }
+
+    private fun prepareTorrentSourceIfNeeded(source: AnimeSource) {
+        if (!source.isSourceForTorrents()) return
+        TorrentServerService.start()
+        if (TorrentServerService.wait(10)) {
+            TorrentServerUtils.setTrackersList()
         }
     }
 

@@ -70,7 +70,7 @@ class TorrentServerService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val builder = context.notificationBuilder(Notifications.CHANNEL_TORRENT_SERVER) {
-            setSmallIcon(R.mipmap.ic_launcher)
+            setSmallIcon(android.R.drawable.stat_sys_download)
             setContentText("Torrent server is running")
             setContentTitle("Chimahon")
             setAutoCancel(false)

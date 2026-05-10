@@ -184,7 +184,7 @@ data object AnimeTab : Tab {
                 },
                 onPickFile = {
                     showOpenVideoDialog = false
-                    filePickerLauncher.launch(arrayOf("video/*"))
+                    filePickerLauncher.launch(arrayOf("video/*", "application/x-bittorrent", "application/octet-stream"))
                 },
             )
         }

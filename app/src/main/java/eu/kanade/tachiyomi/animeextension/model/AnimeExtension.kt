@@ -13,6 +13,7 @@ sealed class AnimeExtension {
     abstract val libVersion: Double
     abstract val lang: String?
     abstract val isNsfw: Boolean
+    abstract val isTorrent: Boolean
     abstract val signatureHash: String
 
     data class Installed(
@@ -23,6 +24,7 @@ sealed class AnimeExtension {
         override val libVersion: Double,
         override val lang: String,
         override val isNsfw: Boolean,
+        override val isTorrent: Boolean,
         override val signatureHash: String,
         val pkgFactory: String?,
         val sources: List<AnimeSource>,
@@ -41,6 +43,7 @@ sealed class AnimeExtension {
         override val libVersion: Double,
         override val lang: String,
         override val isNsfw: Boolean,
+        override val isTorrent: Boolean,
         override val signatureHash: String,
         val sources: List<Source>,
         val apkName: String,
@@ -73,5 +76,6 @@ sealed class AnimeExtension {
         override val signatureHash: String,
         override val lang: String? = null,
         override val isNsfw: Boolean = false,
+        override val isTorrent: Boolean = false,
     ) : AnimeExtension()
 }

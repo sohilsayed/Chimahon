@@ -17,6 +17,7 @@ import java.io.InputStream
 object TorrentServerApi {
     private val network: NetworkHelper by injectLazy()
     private val hostUrl get() = TorrentServerUtils.hostUrl
+    private val json = Json { ignoreUnknownKeys = true }
 
     fun echo(): String {
         return try {
@@ -54,7 +55,7 @@ object TorrentServerApi {
         val resp = network.client.newCall(
             POST("$hostUrl/torrents", body = req.toRequestBody("application/json".toMediaTypeOrNull())),
         ).execute()
-        return Json.decodeFromString(Torrent.serializer(), resp.body.string())
+        return json.decodeFromString(Torrent.serializer(), resp.body.string())
     }
 
     fun getTorrent(hash: String): Torrent {
@@ -62,7 +63,7 @@ object TorrentServerApi {
         val resp = network.client.newCall(
             POST("$hostUrl/torrents", body = req.toRequestBody("application/json".toMediaTypeOrNull())),
         ).execute()
-        return Json.decodeFromString(Torrent.serializer(), resp.body.string())
+        return json.decodeFromString(Torrent.serializer(), resp.body.string())
     }
 
     fun remTorrent(hash: String) {
@@ -77,7 +78,7 @@ object TorrentServerApi {
         val resp = network.client.newCall(
             POST("$hostUrl/torrents", body = req.toRequestBody("application/json".toMediaTypeOrNull())),
         ).execute()
-        return Json.decodeFromString<List<Torrent>>(resp.body.string())
+        return json.decodeFromString<List<Torrent>>(resp.body.string())
     }
 
     fun uploadTorrent(
@@ -105,6 +106,6 @@ object TorrentServerApi {
             .post(body)
             .build()
         val resp = network.client.newCall(request).execute()
-        return Json.decodeFromString(Torrent.serializer(), resp.body.string())
+        return json.decodeFromString(Torrent.serializer(), resp.body.string())
     }
 }

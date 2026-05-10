@@ -40,6 +40,7 @@ internal object AnimeExtensionLoader {
     private const val METADATA_SOURCE_CLASS = "tachiyomi.animeextension.class"
     private const val METADATA_SOURCE_FACTORY = "tachiyomi.animeextension.factory"
     private const val METADATA_NSFW = "tachiyomi.animeextension.nsfw"
+    private const val METADATA_TORRENT = "tachiyomi.animeextension.torrent"
     const val LIB_VERSION_MIN = 14.0
     const val LIB_VERSION_MAX = 15.0
 
@@ -237,6 +238,7 @@ internal object AnimeExtensionLoader {
             logcat(LogPriority.WARN) { "NSFW anime extension $pkgName not allowed" }
             return AnimeLoadResult.Error
         }
+        val isTorrent = appInfo.metaData.getInt(METADATA_TORRENT) == 1
 
         val classLoader = try {
             ChildFirstPathClassLoader(appInfo.sourceDir, null, context.classLoader)
@@ -285,6 +287,7 @@ internal object AnimeExtensionLoader {
             libVersion = libVersion,
             lang = lang,
             isNsfw = isNsfw,
+            isTorrent = isTorrent,
             sources = sources,
             pkgFactory = appInfo.metaData.getString(METADATA_SOURCE_FACTORY),
             icon = appInfo.loadIcon(pkgManager),

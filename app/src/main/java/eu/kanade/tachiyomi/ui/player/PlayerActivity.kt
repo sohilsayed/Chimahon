@@ -17,6 +17,7 @@ import android.media.session.PlaybackState
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.OpenableColumns
 import android.util.Rational
 import android.view.KeyEvent
 import android.view.WindowManager
@@ -339,9 +340,17 @@ class PlayerActivity : ComponentActivity() {
                 logcat(LogPriority.ERROR, tag = "Player") { "No playable video URL found for episode" }
                 return@launchIO
             }
+            val isTorrent = isTorrentPlaybackUrl(url)
+            val title = resolvedVideo?.videoTitle ?: episode.name
+            var resolvedTorrentPlayUrl: String? = null
             if (playerPreferences.alwaysUseExternalPlayer().get()) {
+                val externalUrl = if (isTorrent) {
+                    resolveTorrentUrl(url, title).also { resolvedTorrentPlayUrl = it }
+                } else {
+                    url
+                }
                 val extIntent = ExternalIntents.newIntent(
-                    this@PlayerActivity, animeId, episodeId, url, resolvedVideo,
+                    this@PlayerActivity, animeId, episodeId, externalUrl, resolvedVideo,
                 )
                 if (extIntent != null) {
                     withContext(Dispatchers.Main) {
@@ -353,8 +362,8 @@ class PlayerActivity : ComponentActivity() {
             }
             val resumePos = state.currentPositionSec
                 .takeIf { it > 0 } ?: episode.lastSecondSeen
-            val playUrl = if (PlayerViewModel.isTorrentUrl(url)) {
-                resolveTorrentUrl(url, resolvedVideo?.videoTitle ?: episode.name)
+            val playUrl = if (isTorrent) {
+                resolvedTorrentPlayUrl ?: resolveTorrentUrl(url, title)
             } else {
                 resolvePlaybackUrl(url)
             }
@@ -719,7 +728,7 @@ class PlayerActivity : ComponentActivity() {
         val headers = resolvedVideo?.headers?.let { h ->
             (0 until h.size).associate { i -> h.name(i) to h.value(i) }
         }
-        if (PlayerViewModel.isTorrentUrl(url)) {
+        if (isTorrentPlaybackUrl(url)) {
             lifecycleScope.launchIO {
                 val playUrl = resolveTorrentUrl(url, resolvedVideo?.videoTitle ?: episode.name)
                 withContext(Dispatchers.Main) {
@@ -867,8 +876,17 @@ class PlayerActivity : ComponentActivity() {
         TorrentServerService.start()
         TorrentServerService.wait(10)
 
+        if (videoUrl.startsWith("content://", ignoreCase = true)) {
+            val inputStream = contentResolver.openInputStream(Uri.parse(videoUrl))
+                ?: error("Could not open torrent file")
+            inputStream.use {
+                val torrent = TorrentServerApi.uploadTorrent(it, title, "", "", false)
+                return TorrentServerUtils.getTorrentPlayLink(torrent, 0)
+            }
+        }
+
         var index = 0
-        if (videoUrl.startsWith("magnet") && videoUrl.contains("index=")) {
+        if (videoUrl.startsWith("magnet", ignoreCase = true) && videoUrl.contains("index=")) {
             index = try {
                 videoUrl.substringAfter("index=").substringBefore("&").toInt()
             } catch (_: NumberFormatException) {
@@ -878,6 +896,25 @@ class PlayerActivity : ComponentActivity() {
 
         val torrent = TorrentServerApi.addTorrent(videoUrl, title, "", "", false)
         return TorrentServerUtils.getTorrentPlayLink(torrent, index)
+    }
+
+    private fun isTorrentPlaybackUrl(url: String): Boolean {
+        return PlayerViewModel.isTorrentUrl(url) || isTorrentContentUri(url)
+    }
+
+    private fun isTorrentContentUri(url: String): Boolean {
+        if (!url.startsWith("content://", ignoreCase = true)) return false
+        val uri = Uri.parse(url)
+        val type = runCatching { contentResolver.getType(uri)?.lowercase() }.getOrNull()
+        if (type?.contains("bittorrent") == true || type?.contains("torrent") == true) return true
+
+        val displayName = runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+        }.getOrNull()
+        return displayName?.endsWith(".torrent", ignoreCase = true) == true
     }
 
     private fun resolveVideoUrl(intent: Intent): String? {

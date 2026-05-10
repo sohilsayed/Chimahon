@@ -128,7 +128,7 @@ fun AnimeListScreen(
             },
             onPickFile = {
                 showDialog = false
-                filePickerLauncher.launch(arrayOf("video/*"))
+                filePickerLauncher.launch(arrayOf("video/*", "application/x-bittorrent", "application/octet-stream"))
             },
         )
     }

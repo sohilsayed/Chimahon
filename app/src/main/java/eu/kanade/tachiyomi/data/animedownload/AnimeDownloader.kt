@@ -17,6 +17,7 @@ import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.torrentServer.TorrentServerApi
 import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
+import eu.kanade.tachiyomi.source.isSourceForTorrents
 import eu.kanade.tachiyomi.ui.player.PlayerViewModel
 import eu.kanade.tachiyomi.network.ProgressListener
 import eu.kanade.tachiyomi.util.storage.DiskUtil
@@ -303,6 +304,12 @@ class AnimeDownloader(
     private suspend fun resolveVideo(download: AnimeDownload) {
         withContext(Dispatchers.IO) {
             val source = download.source
+            if (source.isSourceForTorrents()) {
+                TorrentServerService.start()
+                if (TorrentServerService.wait(10)) {
+                    TorrentServerUtils.setTrackersList()
+                }
+            }
             val episode = download.episode
             val sEpisode = SEpisode.create().apply {
                 url = episode.url

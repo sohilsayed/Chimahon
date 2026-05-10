@@ -15,9 +15,12 @@ import eu.kanade.tachiyomi.animesource.model.TimeStamp
 import eu.kanade.tachiyomi.animesource.model.Video
 import eu.kanade.tachiyomi.animesource.online.AnimeHttpSource
 import eu.kanade.tachiyomi.data.animedownload.AnimeDownloadManager
+import eu.kanade.tachiyomi.data.torrentServer.service.TorrentServerService
 import eu.kanade.tachiyomi.data.track.TrackerManager
 import eu.kanade.tachiyomi.data.track.anilist.Anilist
 import eu.kanade.tachiyomi.data.track.myanimelist.MyAnimeList
+import eu.kanade.tachiyomi.source.isSourceForTorrents
+import eu.kanade.tachiyomi.torrentServer.TorrentServerUtils
 import eu.kanade.tachiyomi.ui.player.controls.components.IndexedSegment
 import eu.kanade.tachiyomi.ui.player.mpv.MPVView
 import eu.kanade.tachiyomi.ui.player.setting.PlayerPreferences
@@ -200,6 +203,12 @@ class PlayerViewModel @JvmOverloads constructor(
         return withIOContext {
             try {
                 val source = animeSourceManager.get(sourceId) ?: return@withIOContext null
+                if (source.isSourceForTorrents()) {
+                    TorrentServerService.start()
+                    if (TorrentServerService.wait(10)) {
+                        TorrentServerUtils.setTrackersList()
+                    }
+                }
                 val sEpisode = SEpisode.create().apply {
                     url = episode.url
                     name = episode.name
@@ -834,11 +843,12 @@ class PlayerViewModel @JvmOverloads constructor(
         private val STREAMABLE_SCHEMES = setOf("http", "https", "rtmp", "rtsp", "file", "content", "magnet")
 
         fun isTorrentUrl(url: String): Boolean {
-            return url.startsWith("magnet") || url.endsWith(".torrent")
+            val normalized = url.trim().lowercase()
+            return normalized.startsWith("magnet:") || normalized.endsWith(".torrent")
         }
 
         fun isPlayableScheme(url: String): Boolean {
-            val scheme = url.substringBefore("://").lowercase()
+            val scheme = url.substringBefore(":", missingDelimiterValue = "").lowercase()
             return scheme in STREAMABLE_SCHEMES
         }
     }
