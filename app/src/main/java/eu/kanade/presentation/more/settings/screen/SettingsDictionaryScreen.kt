@@ -77,6 +77,7 @@ import chimahon.HoshiDicts
 import com.canopus.chimareader.data.FontManager
 import chimahon.anki.AnkiCardCreator
 import chimahon.anki.AnkiDroidBridge
+import chimahon.anki.AnkiProfile
 import chimahon.anki.Marker
 import eu.kanade.presentation.more.settings.Preference
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
@@ -888,6 +889,8 @@ object SettingsDictionaryScreen : SearchableSettings {
         val activeProfile = remember(rawProfiles, rawActiveProfileId) { profileStore.getActiveProfile() }
         val currentOrder = activeProfile.dictionaryOrder
         val enabledDicts = activeProfile.enabledDictionaries
+        val collapseMode = activeProfile.dictionaryCollapseMode
+        val dictionaryDisplayModes = activeProfile.dictionaryDisplayModes
 
         val pickDictionary = androidx.activity.compose.rememberLauncherForActivityResult(
             contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument(),
@@ -912,6 +915,22 @@ object SettingsDictionaryScreen : SearchableSettings {
             val remaining = dictionaries.filter { it !in currentOrder }
             ordered + remaining
         }
+        val collapseModeOptions = listOf(
+            AnkiProfile.DICTIONARY_COLLAPSE_EXPAND_ALL to "Expand all dictionaries",
+            AnkiProfile.DICTIONARY_COLLAPSE_EXPAND_FIRST_AVAILABLE to "Expand first available dictionary",
+            AnkiProfile.DICTIONARY_COLLAPSE_COLLAPSE_ALL to "Collapse all dictionaries",
+            AnkiProfile.DICTIONARY_COLLAPSE_CUSTOM to "Custom",
+        )
+        val customModeOptions = listOf(
+            AnkiProfile.DICTIONARY_DISPLAY_ALWAYS_EXPANDED to "Always expanded",
+            AnkiProfile.DICTIONARY_DISPLAY_FALLBACK to "Fallback",
+            AnkiProfile.DICTIONARY_DISPLAY_ALWAYS_COLLAPSED to "Always collapsed",
+        )
+        val collapseModeLabel = collapseModeOptions.firstOrNull { it.first == collapseMode }?.second
+            ?: collapseModeOptions.first().second
+        fun customModeLabel(mode: String): String =
+            customModeOptions.firstOrNull { it.first == mode }?.second
+                ?: customModeOptions[1].second
 
         dictToDelete?.let { dictName ->
             AlertDialog(
@@ -929,7 +948,14 @@ object SettingsDictionaryScreen : SearchableSettings {
                             }
                             val newOrder = orderedDicts.filter { d -> d != dictName }
                             val newEnabled = enabledDicts - dictName
-                            profileStore.updateProfile(activeProfile.copy(dictionaryOrder = newOrder, enabledDictionaries = newEnabled))
+                            val newDisplayModes = dictionaryDisplayModes - dictName
+                            profileStore.updateProfile(
+                                activeProfile.copy(
+                                    dictionaryOrder = newOrder,
+                                    enabledDictionaries = newEnabled,
+                                    dictionaryDisplayModes = newDisplayModes,
+                                ),
+                            )
                             loadDictionaryList(context)
                             dictToDelete = null
                         },
@@ -962,23 +988,129 @@ object SettingsDictionaryScreen : SearchableSettings {
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                                    shape = RoundedCornerShape(12.dp),
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                                    ) {
+                                        Text(
+                                            text = "Collapse behavior",
+                                            style = MaterialTheme.typography.titleSmall,
+                                        )
+                                        Text(
+                                            text = "Controls which dictionary groups open first in lookup results.",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+
+                                        var collapseMenuExpanded by remember { mutableStateOf(false) }
+                                        Box {
+                                            OutlinedButton(
+                                                onClick = { collapseMenuExpanded = true },
+                                                modifier = Modifier.fillMaxWidth(),
+                                            ) {
+                                                Text(
+                                                    text = collapseModeLabel,
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                                Icon(
+                                                    imageVector = Icons.Outlined.KeyboardArrowDown,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = collapseMenuExpanded,
+                                                onDismissRequest = { collapseMenuExpanded = false },
+                                            ) {
+                                                collapseModeOptions.forEach { (mode, label) ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(label) },
+                                                        onClick = {
+                                                            profileStore.updateProfile(
+                                                                activeProfile.copy(dictionaryCollapseMode = mode),
+                                                            )
+                                                            collapseMenuExpanded = false
+                                                        },
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
                                 orderedDicts.forEachIndexed { index, dictName ->
-                                    Row(
+                                    Surface(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically,
+                                        shape = RoundedCornerShape(10.dp),
+                                        tonalElevation = 1.dp,
                                     ) {
-                                        Text(
-                                            text = dictName,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            modifier = Modifier.weight(1f),
-                                        )
                                         Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically,
                                         ) {
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                                            ) {
+                                                Text(
+                                                    text = dictName,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                )
+                                                if (collapseMode == AnkiProfile.DICTIONARY_COLLAPSE_CUSTOM) {
+                                                    var dictModeExpanded by remember(dictName) { mutableStateOf(false) }
+                                                    val selectedMode = dictionaryDisplayModes[dictName]
+                                                        ?: AnkiProfile.DICTIONARY_DISPLAY_FALLBACK
+                                                    Box {
+                                                        OutlinedButton(
+                                                            onClick = { dictModeExpanded = true },
+                                                            modifier = Modifier.fillMaxWidth(),
+                                                        ) {
+                                                            Text(
+                                                                text = customModeLabel(selectedMode),
+                                                                modifier = Modifier.weight(1f),
+                                                            )
+                                                            Icon(
+                                                                imageVector = Icons.Outlined.KeyboardArrowDown,
+                                                                contentDescription = null,
+                                                                modifier = Modifier.size(18.dp),
+                                                            )
+                                                        }
+                                                        DropdownMenu(
+                                                            expanded = dictModeExpanded,
+                                                            onDismissRequest = { dictModeExpanded = false },
+                                                        ) {
+                                                            customModeOptions.forEach { (mode, label) ->
+                                                                DropdownMenuItem(
+                                                                    text = { Text(label) },
+                                                                    onClick = {
+                                                                        profileStore.updateProfile(
+                                                                            activeProfile.copy(
+                                                                                dictionaryDisplayModes = dictionaryDisplayModes + (dictName to mode),
+                                                                            ),
+                                                                        )
+                                                                        dictModeExpanded = false
+                                                                    },
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                            ) {
                                             IconButton(
                                                 onClick = {
                                                     val newEnabled = if (enabledDicts.isEmpty()) {
@@ -1047,6 +1179,7 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                     tint = MaterialTheme.colorScheme.error,
                                                     modifier = Modifier.size(16.dp),
                                                 )
+                                            }
                                             }
                                         }
                                     }

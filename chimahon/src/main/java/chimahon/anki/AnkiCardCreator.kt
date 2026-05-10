@@ -631,8 +631,18 @@ object AnkiCardCreator {
                 ""
             }
         }
-        Marker.POPUP_SELECTION_TEXT -> popupSelection?.let { escapeHtml(it) } ?: ""
-        Marker.SELECTED_GLOSSARY -> buildGlossary(result.term.glossaries, brief = false, noDictTag = false, firstOnly = false, dictionaryFilter = selectedDict, styles = styles)
+        Marker.POPUP_SELECTION_TEXT -> popupSelection?.let { escapeHtmlWithLineBreaks(it) } ?: ""
+        Marker.SELECTED_GLOSSARY -> {
+            val selected = selectedDict?.takeIf { it.isNotBlank() }
+            buildGlossary(
+                result.term.glossaries,
+                brief = false,
+                noDictTag = false,
+                firstOnly = selected == null,
+                dictionaryFilter = selected,
+                styles = styles,
+            )
+        }
         Marker.DOCUMENT_TITLE -> media?.mangaTitle?.let { escapeHtml(it) } ?: ""
         else -> parseSingleGlossaryMarker(marker, result, styles)
     }

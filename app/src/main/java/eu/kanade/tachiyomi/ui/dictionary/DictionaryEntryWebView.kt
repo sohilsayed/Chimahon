@@ -25,12 +25,9 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -44,11 +41,8 @@ import uy.kohesive.injekt.api.get
 import java.io.File
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.Dispatchers
 import chimahon.audio.WordAudioService
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
-import eu.kanade.tachiyomi.BuildConfig
-import eu.kanade.domain.ui.model.ThemeMode
 import eu.kanade.domain.ui.UiPreferences
 import eu.kanade.presentation.theme.colorscheme.*
 import com.materialkolor.PaletteStyle
@@ -65,6 +59,24 @@ private const val CHIMA_HOST_BACK = "back"
 
 /** Represents one entry in the scrollable lookup-history tab bar shown inside the WebView. */
 data class TabInfo(val label: String, val active: Boolean)
+
+private data class DictionaryRenderSignature(
+    val results: List<LookupResult>,
+    val styles: List<DictionaryStyle>,
+    val placeholder: String,
+    val isDark: Boolean,
+    val showFrequencyHarmonic: Boolean,
+    val groupTerms: Boolean,
+    val showPitchDiagram: Boolean,
+    val showPitchNumber: Boolean,
+    val showPitchText: Boolean,
+    val activeProfile: chimahon.anki.AnkiProfile,
+    val tabs: List<TabInfo>,
+    val recursiveNavMode: String,
+    val wordAudioEnabled: Boolean,
+    val wordAudioAutoplay: Boolean,
+    val showNavigationButtons: Boolean,
+)
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -92,6 +104,8 @@ fun DictionaryEntryWebView(
     onRecursiveLookup: ((String) -> Unit)? = null,
     onTabSelect: ((Int) -> Unit)? = null,
     onBack: (() -> Unit)? = null,
+    onContentReadyChange: ((Boolean) -> Unit)? = null,
+    hideOnContentInvalidated: Boolean = true,
     forceDefaultTheme: Boolean = false,
     isLoading: Boolean = false,
 ) {
@@ -115,15 +129,53 @@ fun DictionaryEntryWebView(
     val BgColor = remember(isDark, amoled, seedColor, colorScheme) {
         if (amoled && isDark) Color.Black else colorScheme.surface
     }
+    val wordAudioAutoplay by prefs.wordAudioAutoplay().collectAsState()
+    val showNavigationButtons by prefs.showNavigationButtons().collectAsState()
 
-    val payloadObject = remember(context, results, styles, mediaDataUris, placeholder, isDark, showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText, activeProfile, tabs, recursiveNavMode, wordAudioEnabled) {
+    val renderSignature = remember(
+        results,
+        styles,
+        placeholder,
+        isDark,
+        showFrequencyHarmonic,
+        groupTerms,
+        showPitchDiagram,
+        showPitchNumber,
+        showPitchText,
+        activeProfile,
+        tabs,
+        recursiveNavMode,
+        wordAudioEnabled,
+        wordAudioAutoplay,
+        showNavigationButtons,
+    ) {
+        DictionaryRenderSignature(
+            results = results,
+            styles = styles,
+            placeholder = placeholder,
+            isDark = isDark,
+            showFrequencyHarmonic = showFrequencyHarmonic,
+            groupTerms = groupTerms,
+            showPitchDiagram = showPitchDiagram,
+            showPitchNumber = showPitchNumber,
+            showPitchText = showPitchText,
+            activeProfile = activeProfile,
+            tabs = tabs,
+            recursiveNavMode = recursiveNavMode,
+            wordAudioEnabled = wordAudioEnabled,
+            wordAudioAutoplay = wordAudioAutoplay,
+            showNavigationButtons = showNavigationButtons,
+        )
+    }
+
+    val payloadObject = remember(context, renderSignature) {
         val buildStart = SystemClock.elapsedRealtime()
         val result = buildRenderPayload(
-            context, results, styles, mediaDataUris, placeholder, isDark,
+            context, results, styles, emptyMap(), placeholder, isDark,
             showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
-            prefs.wordAudioAutoplay().get(), activeProfile, existingExpressions, tabs, recursiveNavMode,
+            wordAudioAutoplay, activeProfile, emptySet(), tabs, recursiveNavMode,
             wordAudioEnabled = wordAudioEnabled,
-            showNavigationButtons = prefs.showNavigationButtons().get(),
+            showNavigationButtons = showNavigationButtons,
         )
         Log.i(
             "DictionaryRender",
@@ -144,217 +196,130 @@ fun DictionaryEntryWebView(
     
     val payloadString = remember(payloadObject) { payloadObject.toString() }
     
-    var isPageReady by remember { mutableStateOf(false) }
-    var loadedHtml by remember { mutableStateOf<String?>(null) }
-
     Box(modifier = modifier.background(BgColor)) {
         AndroidView<WebView>(
             modifier = Modifier.fillMaxSize(),
             factory = { ctx: Context ->
-            val webView = webViewProvider?.invoke(ctx) ?: WebView(ctx)
+                val webView = webViewProvider?.invoke(ctx) ?: WebView(ctx)
+                (webView.parent as? android.view.ViewGroup)?.removeView(webView)
 
-            val isAlreadyWarm = webView.getTag(R.id.chima_webview_warm) == true
-            
-            if (webView.tag == null) {
-                val state = DictionaryWebViewState(ctx, webViewProvider = { webView })
-                webView.apply {
-                    // Only hide if we actually need to load something
-                    alpha = if (isAlreadyWarm) 1f else 0f
-                    
-                    setBackgroundColor(BgColor.toArgb())
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    settings.loadsImagesAutomatically = true
-                    settings.blockNetworkLoads = true
-                    settings.allowFileAccess = true
-                    settings.allowContentAccess = true
-                    settings.allowFileAccessFromFileURLs = true
-                    settings.allowUniversalAccessFromFileURLs = true
-                    settings.cacheMode = WebSettings.LOAD_NO_CACHE
-                    settings.setSupportZoom(true)
-                    settings.displayZoomControls = false
-                    isVerticalScrollBarEnabled = false
-                    isHorizontalScrollBarEnabled = false
-
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        settings.forceDark = WebSettings.FORCE_DARK_OFF
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        settings.isAlgorithmicDarkeningAllowed = false
-                    }
-
-                    disableSafeBrowsingForDictionary(this)
-
-                    // Payload bridge for efficient data transfer
-                    addJavascriptInterface(state.bridge, "PayloadBridge")
-                    addJavascriptInterface(state.wordAudioBridge, "WordAudioBridge")
-
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            val s = view?.tag as? DictionaryWebViewState ?: return
-                            s.pageReady = true
-                            isPageReady = true
-                            view.setTag(R.id.chima_webview_warm, true)
-                            val enableRecursive = s.onRecursiveLookup != null
-                            view.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
-                            s.injectFontSize(view)
-                            s.injectCustomCss(view)
-                            s.flush(view)
-                            view.alpha = 1f
-                        }
-
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView?,
-                            request: WebResourceRequest?,
-                        ): Boolean {
-                            val url = request?.url ?: return false
-                            val s = view?.tag as? DictionaryWebViewState
-
-                            // ── chima:// — recursive lookup, tab navigation, back ──
-                            if (url.scheme == CHIMA_SCHEME) {
-                                when (url.host) {
-                                    CHIMA_HOST_LOOKUP -> {
-                                        val q = url.getQueryParameter("q") ?: return true
-                                        if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q)
-                                        return true
-                                    }
-                                    CHIMA_HOST_TAB -> {
-                                        val idx = url.getQueryParameter("index")?.toIntOrNull()
-                                        if (idx != null) s?.onTabSelect?.invoke(idx)
-                                        return true
-                                    }
-                                    CHIMA_HOST_BACK -> {
-                                        s?.onBack?.invoke()
-                                        return true
-                                    }
-                                }
-                                return true // consume any unknown chima:// URLs
-                            }
-
-                            // ── anki://add or anki://open ──
-                            if (url.scheme == ANKI_SCHEME) {
-                                val host = url.host ?: ""
-                                val isAdd = host.equals(ANKI_PATH_ADD, ignoreCase = true)
-                                val isOpen = host.equals(ANKI_PATH_OPEN, ignoreCase = true)
-
-                                if (isAdd || isOpen) {
-                                    val index = url.getQueryParameter("index")?.toIntOrNull()
-                                    val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
-                                    val selectedDict = url.getQueryParameter("selected_dict")
-                                    val popupSelection = url.getQueryParameter("popup_selection")
-                                    
-                                    android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: host=$host, index=$index, isOpen=$isOpen")
-                                    
-                                    if (index != null && index >= 0) {
-                                        s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, isOpen)
-                                    }
-                                    return true // Consumed
-                                }
-                            }
-                            return false
+                if (webView.tag !is DictionaryWebViewState) {
+                    prepareDictionaryWebViewShell(ctx, webView, bootstrapHtml, BgColor.toArgb())
+                }
+                (webView.tag as? DictionaryWebViewState)?.let { state ->
+                    state.onContentInvalidated = {
+                        onContentReadyChange?.invoke(false)
+                        if (hideOnContentInvalidated) {
+                            webView.alpha = 0f
                         }
                     }
+                    state.onContentReady = {
+                        onContentReadyChange?.invoke(true)
+                        webView.alpha = 1f
+                    }
+                    if (state.pageReady) {
+                        state.flush(webView)
+                    }
+                }
 
-                    tag = state
+                webView.isClickable = true
+                webView.isLongClickable = true
+                webView.isFocusable = true
+                webView.isFocusableInTouchMode = true
+                webView.requestFocus()
+                webView.setOnLongClickListener { false }
 
-                    // Only load if not already at the correct shell URL
-                    if (!isAlreadyWarm) {
-                        loadDataWithBaseURL(
-                            "https://chima.local/popup/",
-                            bootstrapHtml,
-                            "text/html",
-                            "UTF-8",
-                            null,
-                        )
+                webView.setOnKeyListener { v, keyCode, event ->
+                    if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+                        when (keyCode) {
+                            android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
+                                (v as? WebView)?.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.navigate(-1);", null)
+                                true
+                            }
+                            android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
+                                (v as? WebView)?.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.navigate(1);", null)
+                                true
+                            }
+                            else -> false
+                        }
+                    } else false
+                }
+
+                webView
+            },
+            update = { webView: WebView ->
+                val state = webView.tag as? DictionaryWebViewState ?: return@AndroidView
+                if (state.bootstrapHtml != bootstrapHtml) {
+                    state.reloadShell(webView, bootstrapHtml)
+                }
+                state.onAnkiLookup = onAnkiLookup
+                state.onRecursiveLookup = onRecursiveLookup
+                state.onTabSelect = onTabSelect
+                state.onBack = onBack
+                state.customCss = customCss
+                state.fontSize = fontSize
+                state.onContentInvalidated = {
+                    onContentReadyChange?.invoke(false)
+                    if (hideOnContentInvalidated) {
+                        webView.alpha = 0f
+                    }
+                }
+                state.onContentReady = {
+                    onContentReadyChange?.invoke(true)
+                    webView.alpha = 1f
+                }
+
+                webView.setBackgroundColor(BgColor.toArgb())
+
+                // Efficiently push new data to existing page
+                if (state.pageReady) {
+                    val enableRecursive = onRecursiveLookup != null
+                    webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
+                    state.injectCustomCss(webView)
+                    state.injectFontSize(webView)
+                    if (isLoading) {
+                        state.clear(webView)
                     } else {
-                        // Already warm, manually trigger readiness
-                        state.pageReady = true
-                        isPageReady = true
+                        state.flush(webView, results, existingExpressions, mediaDataUris, renderSignature, payloadString)
                     }
-                }
-            } else if (isAlreadyWarm) {
-                webView.alpha = 1f
-                val s = (webView.tag as? DictionaryWebViewState)
-                if (s != null) {
-                    s.pageReady = true
-                    isPageReady = true
-                    // If we have a pending payload, push it now that we're tagging it
-                    s.flush(webView)
-                }
-            }
-
-            // Ensure focus and long-click are enabled even for retained WebViews
-            webView.isLongClickable = true
-            webView.isFocusable = true
-            webView.isFocusableInTouchMode = true
-            webView.requestFocus()
-            webView.setOnLongClickListener { false }
-
-            webView.setOnKeyListener { v, keyCode, event ->
-                if (event.action == android.view.KeyEvent.ACTION_DOWN) {
-                    when (keyCode) {
-                        android.view.KeyEvent.KEYCODE_VOLUME_UP -> {
-                            (v as? WebView)?.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.navigate(-1);", null)
-                            true
-                        }
-                        android.view.KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                            (v as? WebView)?.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.navigate(1);", null)
-                            true
-                        }
-                        else -> false
-                    }
-                } else false
-            }
-
-            webView
-        },
-        update = { webView: WebView ->
-            val state = webView.tag as? DictionaryWebViewState ?: return@AndroidView
-            state.onAnkiLookup = onAnkiLookup
-            state.onRecursiveLookup = onRecursiveLookup
-            state.onTabSelect = onTabSelect
-            state.onBack = onBack
-            state.customCss = customCss
-            state.fontSize = fontSize
-
-            webView.setBackgroundColor(BgColor.toArgb())
-            
-            // Efficiently push new data to existing page
-            if (state.pageReady) {
-                val enableRecursive = onRecursiveLookup != null
-                webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
-                state.injectCustomCss(webView)
-                state.injectFontSize(webView)
-                if (isLoading) {
-                    state.clear(webView)
                 } else {
-                    state.flush(webView, results, existingExpressions, payloadString)
+                    state.pendingPayload = payloadString
+                    state.pendingResults = results
+                    state.pendingExistingExpressions = existingExpressions
+                    state.pendingMediaDataUris = mediaDataUris
+                    state.pendingRenderSignature = renderSignature
                 }
-            } else {
-                state.pendingPayload = payloadString
-            }
-        },
-        onRelease = { webView ->
-            val state = webView.tag as? DictionaryWebViewState
-            state?.clear(webView)
-            state?.lastPayload = null
-        },
-    )
+            },
+            onRelease = { webView ->
+                val state = webView.tag as? DictionaryWebViewState
+                state?.clear(webView)
+                state?.onContentInvalidated = null
+                state?.onContentReady = null
+                state?.lastPayload = null
+                state?.lastResults = null
+                state?.lastExistingExpressions = null
+                state?.lastMediaDataUris = null
+                state?.lastRenderSignature = null
+                state?.pendingPayload = null
+                state?.pendingResults = null
+                state?.pendingExistingExpressions = null
+                state?.pendingMediaDataUris = null
+                state?.pendingRenderSignature = null
+            },
+        )
     }
 }
 
-// JavaScript bridge for zero-overhead payload transfer
-private class PayloadBridge {
-    @Volatile
-    private var _json: String = ""
-
-    fun setJson(value: String) {
-        _json = value
-    }
-
+private class DictionaryReadyBridge(
+    private val webViewProvider: () -> WebView?,
+) {
     @JavascriptInterface
-    fun getJson(): String = _json
+    fun contentReady() {
+        val webView = webViewProvider() ?: return
+        webView.post {
+            (webView.tag as? DictionaryWebViewState)?.onContentReady?.invoke()
+        }
+    }
 }
 
 private class WordAudioBridge(
@@ -433,22 +398,143 @@ private class WordAudioBridge(
     }
 }
 
+@SuppressLint("SetJavaScriptEnabled")
+internal fun prepareDictionaryWebViewShell(
+    context: Context,
+    webView: WebView = WebView(context),
+    bootstrapHtml: String = getDictionaryBootstrapHtml(context),
+    backgroundColor: Int = android.graphics.Color.TRANSPARENT,
+): WebView {
+    (webView.tag as? DictionaryWebViewState)?.let { state ->
+        if (state.bootstrapHtml != bootstrapHtml) {
+            state.reloadShell(webView, bootstrapHtml)
+        }
+        return webView
+    }
+
+    val state = DictionaryWebViewState(context, webViewProvider = { webView }, bootstrapHtml = bootstrapHtml)
+    webView.apply {
+        alpha = 0f
+        setBackgroundColor(backgroundColor)
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        settings.loadsImagesAutomatically = true
+        settings.blockNetworkLoads = true
+        settings.allowFileAccess = true
+        settings.allowContentAccess = true
+        settings.allowFileAccessFromFileURLs = true
+        settings.allowUniversalAccessFromFileURLs = true
+        settings.setSupportZoom(true)
+        settings.displayZoomControls = false
+        isVerticalScrollBarEnabled = false
+        isHorizontalScrollBarEnabled = false
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            settings.forceDark = WebSettings.FORCE_DARK_OFF
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            settings.isAlgorithmicDarkeningAllowed = false
+        }
+
+        disableSafeBrowsingForDictionary(this)
+
+        addJavascriptInterface(state.wordAudioBridge, "WordAudioBridge")
+        addJavascriptInterface(state.readyBridge, "DictionaryReadyBridge")
+
+        webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                val s = view?.tag as? DictionaryWebViewState ?: return
+                s.pageReady = true
+                view.setTag(R.id.chima_webview_warm, true)
+                val enableRecursive = s.onRecursiveLookup != null
+                view.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.setRecursiveLookupEnabled($enableRecursive);", null)
+                s.injectFontSize(view)
+                s.injectCustomCss(view)
+                s.flush(view)
+            }
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?,
+            ): Boolean {
+                val url = request?.url ?: return false
+                val s = view?.tag as? DictionaryWebViewState
+
+                if (url.scheme == CHIMA_SCHEME) {
+                    when (url.host) {
+                        CHIMA_HOST_LOOKUP -> {
+                            val q = url.getQueryParameter("q") ?: return true
+                            if (q.isNotBlank()) s?.onRecursiveLookup?.invoke(q)
+                            return true
+                        }
+                        CHIMA_HOST_TAB -> {
+                            val idx = url.getQueryParameter("index")?.toIntOrNull()
+                            if (idx != null) s?.onTabSelect?.invoke(idx)
+                            return true
+                        }
+                        CHIMA_HOST_BACK -> {
+                            s?.onBack?.invoke()
+                            return true
+                        }
+                    }
+                    return true
+                }
+
+                if (url.scheme == ANKI_SCHEME) {
+                    val host = url.host ?: ""
+                    val isAdd = host.equals(ANKI_PATH_ADD, ignoreCase = true)
+                    val isOpen = host.equals(ANKI_PATH_OPEN, ignoreCase = true)
+
+                    if (isAdd || isOpen) {
+                        val index = url.getQueryParameter("index")?.toIntOrNull()
+                        val glossary = url.getQueryParameter("glossary")?.toIntOrNull()
+                        val selectedDict = url.getQueryParameter("selected_dict")
+                        val popupSelection = url.getQueryParameter("popup_selection")
+
+                        android.util.Log.d("DictionaryEntryWebView", "onAnkiLookup: host=$host, index=$index, isOpen=$isOpen")
+
+                        if (index != null && index >= 0) {
+                            s?.onAnkiLookup?.invoke(index, glossary, selectedDict, popupSelection, isOpen)
+                        }
+                        return true
+                    }
+                }
+                return false
+            }
+        }
+
+        tag = state
+        state.reloadShell(this, bootstrapHtml)
+    }
+    return webView
+}
+
 private class DictionaryWebViewState(
     val context: Context,
-    val bridge: PayloadBridge = PayloadBridge(),
-    webViewProvider: () -> WebView?
+    webViewProvider: () -> WebView?,
+    var bootstrapHtml: String = "",
 ) {
     val wordAudioBridge: WordAudioBridge = WordAudioBridge(context, webViewProvider)
+    val readyBridge: DictionaryReadyBridge = DictionaryReadyBridge(webViewProvider)
     var pageReady: Boolean = false
     var fontSize: Int = 16
     var onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null
     var onRecursiveLookup: ((String) -> Unit)? = null
     var onTabSelect: ((Int) -> Unit)? = null
     var onBack: (() -> Unit)? = null
+    var onContentInvalidated: (() -> Unit)? = null
+    var onContentReady: (() -> Unit)? = null
     var lastPayload: String? = null
     var lastResults: List<LookupResult>? = null
     var lastExistingExpressions: Set<String>? = null
+    var lastMediaDataUris: Map<String, String>? = null
+    var lastRenderSignature: DictionaryRenderSignature? = null
     var pendingPayload: String? = null
+    var pendingResults: List<LookupResult>? = null
+    var pendingExistingExpressions: Set<String>? = null
+    var pendingMediaDataUris: Map<String, String>? = null
+    var pendingRenderSignature: DictionaryRenderSignature? = null
     var customCss: String = ""
 
     fun injectCustomCss(webView: WebView) {
@@ -482,35 +568,103 @@ private class DictionaryWebViewState(
     }
 
     fun clear(webView: WebView) {
+        onContentInvalidated?.invoke()
         webView.evaluateJavascript("window.DictionaryRenderer && window.DictionaryRenderer.clear();", null)
     }
 
-    fun flush(webView: WebView, results: List<LookupResult>? = null, existingExpressions: Set<String>? = null, payload: String? = null) {
-        val p = payload ?: pendingPayload ?: return
+    fun reloadShell(webView: WebView, html: String) {
+        bootstrapHtml = html
+        pageReady = false
+        lastPayload = null
+        lastResults = null
+        lastExistingExpressions = null
+        lastMediaDataUris = null
+        lastRenderSignature = null
+        clearPendingPayload()
+        onContentInvalidated?.invoke()
+        webView.loadDataWithBaseURL(
+            "https://chima.local/popup/",
+            html,
+            "text/html",
+            "UTF-8",
+            null,
+        )
+    }
 
-        if (p == lastPayload) {
-            if (lastExistingExpressions != existingExpressions && existingExpressions != null) {
-                // Optimized path: Only Anki status changed
-                val json = org.json.JSONArray(existingExpressions).toString()
-                webView.evaluateJavascript("DictionaryRenderer.updateAnkiStatus('$json')", null)
-                lastExistingExpressions = existingExpressions
+    fun flush(
+        webView: WebView,
+        results: List<LookupResult>? = null,
+        existingExpressions: Set<String>? = null,
+        mediaDataUris: Map<String, String>? = null,
+        renderSignature: DictionaryRenderSignature? = null,
+        payload: String? = null,
+    ) {
+        val p = payload ?: pendingPayload ?: return
+        val renderResults = results ?: pendingResults
+        val renderExistingExpressions = existingExpressions ?: pendingExistingExpressions
+        val renderMediaDataUris = mediaDataUris ?: pendingMediaDataUris
+        val signature = renderSignature ?: pendingRenderSignature
+
+        val canPatchExistingRender = lastResults != null &&
+            renderResults != null &&
+            lastResults === renderResults &&
+            lastRenderSignature == signature
+        if (canPatchExistingRender) {
+            if (lastExistingExpressions != renderExistingExpressions && renderExistingExpressions != null) {
+                val json = org.json.JSONArray(renderExistingExpressions).toString()
+                webView.evaluateJavascript("DictionaryRenderer.updateAnkiStatus(${json.toJavascriptExpression()})", null)
+                lastExistingExpressions = renderExistingExpressions
             }
-            pendingPayload = null
+            if (lastMediaDataUris != renderMediaDataUris && renderMediaDataUris != null) {
+                val json = org.json.JSONObject(renderMediaDataUris).toString()
+                webView.evaluateJavascript("DictionaryRenderer.updateMediaDataUris(${json.toJavascriptExpression()})", null)
+                lastMediaDataUris = renderMediaDataUris
+            }
+            if (p != lastPayload) {
+                lastPayload = p
+            }
+            clearPendingPayload()
+            return
+        }
+
+        if (p == lastPayload && lastRenderSignature == signature) {
+            if (lastExistingExpressions != renderExistingExpressions && renderExistingExpressions != null) {
+                // Optimized path: Only Anki status changed
+                val json = org.json.JSONArray(renderExistingExpressions).toString()
+                webView.evaluateJavascript("DictionaryRenderer.updateAnkiStatus(${json.toJavascriptExpression()})", null)
+                lastExistingExpressions = renderExistingExpressions
+            }
+            if (lastMediaDataUris != renderMediaDataUris && renderMediaDataUris != null) {
+                val json = org.json.JSONObject(renderMediaDataUris).toString()
+                webView.evaluateJavascript("DictionaryRenderer.updateMediaDataUris(${json.toJavascriptExpression()})", null)
+                lastMediaDataUris = renderMediaDataUris
+            }
+            clearPendingPayload()
             return
         }
 
         lastPayload = p
-        lastResults = results
-        lastExistingExpressions = existingExpressions
-        pendingPayload = null
+        lastResults = renderResults
+        lastExistingExpressions = renderExistingExpressions
+        lastMediaDataUris = renderMediaDataUris
+        lastRenderSignature = signature
+        clearPendingPayload()
 
         val renderStart = SystemClock.elapsedRealtime()
 
-        // Update bridge payload and trigger JS render
-        bridge.setJson(p)
+        // Push the payload as a JS object literal so the warm shell can render without
+        // the extra Android JavaScript-interface round trip.
+        onContentInvalidated?.invoke()
         injectFontSize(webView)
+        val payloadExpression = p.toJavascriptExpression()
+        val ankiPatch = renderExistingExpressions?.let {
+            "window.DictionaryRenderer.updateAnkiStatus(${org.json.JSONArray(it).toString().toJavascriptExpression()});"
+        }.orEmpty()
+        val mediaPatch = renderMediaDataUris?.takeIf { it.isNotEmpty() }?.let {
+            "window.DictionaryRenderer.updateMediaDataUris(${org.json.JSONObject(it).toString().toJavascriptExpression()});"
+        }.orEmpty()
         webView.evaluateJavascript(
-            "window.DictionaryRenderer && window.DictionaryRenderer.renderFromBridge();",
+            "if (window.DictionaryRenderer) { window.DictionaryRenderer.renderPayloadObject($payloadExpression); $ankiPatch $mediaPatch }",
             null,
         )
 
@@ -519,7 +673,19 @@ private class DictionaryWebViewState(
             "webview_dispatch_ms=${SystemClock.elapsedRealtime() - renderStart}",
         )
     }
+
+    private fun clearPendingPayload() {
+        pendingPayload = null
+        pendingResults = null
+        pendingExistingExpressions = null
+        pendingMediaDataUris = null
+        pendingRenderSignature = null
+    }
 }
+
+private fun String.toJavascriptExpression(): String =
+    replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
 
 private fun buildRenderPayload(
     context: Context,
@@ -544,6 +710,8 @@ private fun buildRenderPayload(
     // Dictionary Priority Order (Titles)
     val orderedTitles = activeProfile.dictionaryOrder
         .map { getDictionaryTitle(context, it) }
+    val displayModesByTitle = activeProfile.dictionaryDisplayModes
+        .mapKeys { (dirName, _) -> getDictionaryTitle(context, dirName) }
 
     putJsonArray("dictionaryOrder") {
         for (title in orderedTitles) {
@@ -553,6 +721,12 @@ private fun buildRenderPayload(
 
     put("ankiEnabled", activeProfile.ankiEnabled)
     put("ankiDupAction", activeProfile.ankiDupAction)
+    put("dictionaryCollapseMode", activeProfile.dictionaryCollapseMode)
+    put("dictionaryDisplayModes", buildJsonObject {
+        for ((title, mode) in displayModesByTitle) {
+            put(title, mode)
+        }
+    })
 
     put("placeholder", placeholder)
     put("isDark", isDark)
@@ -705,11 +879,12 @@ internal fun getDictionaryBootstrapHtml(
     isAmoled: Boolean = false,
     fontFamily: String = "",
 ): String {
-    var css = ""
-    var js = ""
-    
-    css = readTextAsset(context, "dictionary/base.css")
-    js = readTextAsset(context, "dictionary/renderer.js").replace("</script", "<\\/script")
+    val css = dictionaryBaseCss.getOrPut(Unit) {
+        readTextAsset(context.applicationContext, "dictionary/base.css")
+    }
+    val js = dictionaryRendererJs.getOrPut(Unit) {
+        readTextAsset(context.applicationContext, "dictionary/renderer.js").replace("</script", "<\\/script")
+    }
 
     val fontUrl = FontManager.getFontUri(context, fontFamily)
     val fontFaceCss = if (fontUrl != null) {
@@ -823,6 +998,9 @@ private fun readTextAsset(context: Context, assetPath: String): String {
         input.readBytes().toString(Charsets.UTF_8)
     }
 }
+
+private val dictionaryBaseCss = java.util.concurrent.ConcurrentHashMap<Unit, String>()
+private val dictionaryRendererJs = java.util.concurrent.ConcurrentHashMap<Unit, String>()
 
 private val dictionaryTitleCache = java.util.concurrent.ConcurrentHashMap<String, String>()
 
