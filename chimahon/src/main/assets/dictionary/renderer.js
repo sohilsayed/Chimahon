@@ -1578,17 +1578,21 @@
     }
 
     if (mode === 'custom') {
-      let fallbackAlreadyOpened = false;
-      let earlierOpenHit = false;
+      // First pass: open all always_expanded dicts
+      let hasExpanded = false;
       for (const dictName of orderedNames) {
-        const dictMode = displayModes[dictName] || 'fallback';
-        if (dictMode === 'always_expanded') {
+        if ((displayModes[dictName] || 'fallback') === 'always_expanded') {
           open.add(dictName);
-          earlierOpenHit = true;
-        } else if (dictMode === 'fallback' && !earlierOpenHit && !fallbackAlreadyOpened) {
-          open.add(dictName);
-          fallbackAlreadyOpened = true;
-          earlierOpenHit = true;
+          hasExpanded = true;
+        }
+      }
+      // Second pass: open first fallback only if no always_expanded exists
+      if (!hasExpanded) {
+        for (const dictName of orderedNames) {
+          if ((displayModes[dictName] || 'fallback') === 'fallback') {
+            open.add(dictName);
+            break;
+          }
         }
       }
       return open;
@@ -2106,6 +2110,11 @@
       }
 
       groupList.appendChild(groupContainer);
+    }
+
+    // Compact layout when only one pitch dict: place name beside pattern
+    if (groupList.childElementCount === 1) {
+      section.dataset.compact = 'true';
     }
 
     if (section.childElementCount > 0) {

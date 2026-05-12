@@ -360,6 +360,19 @@ body {
   color: var(--fg);
 }
 
+.pitches-section[data-compact="true"] .pitch-entry {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+}
+
+.pitches-section[data-compact="true"] .pitch-group-tag {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
 .pronunciation-group-list {
   display: flex;
   flex-wrap: wrap;
@@ -426,6 +439,16 @@ body {
 .glossary-list {
   margin: 4px 0;
   padding-left: 1.2em;
+}
+
+/* Ensure numbered markers in dict content aren't clipped by stripped padding */
+#entries .gloss-sc-ol {
+  padding-left: 1.2em;
+  margin: 2px 0;
+}
+
+#entries .gloss-sc-ol li {
+  margin: 0.08em 0;
 }
 
 .gloss-sc-th, .gloss-sc-td, th, td {
