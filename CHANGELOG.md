@@ -5,6 +5,30 @@ All notable changes to Chimahon are documented here.
 The format follows a Keep a Changelog style and uses Semantic Versioning.
 
 
+## [v1.7.0]
+
+### Added
+- Cascading profiles that cascade from global down to per-reader context.
+- Dictionary language support for Korean, English, and more.
+- Auto kana input in dictionary search.
+- Revamped novel library tab.
+- Add button in the browse tab for importing local files.
+- Popup position modes: Floating, Full-width, and Full-height.
+
+### Changed
+- Revamped popup positioning with priority-based floating (Below→Above→Right→Left).
+- More sidecar formats (.mokuro) now supported — RAR, 7z, EPUB.
+- OCR vowels displayed vertically for vertical text.
+- Reader tap zones disabled by default.
+- Renamed library tab to Manga.
+
+### Fixed
+- OCR text reconstruction for downloaded chapters — reading order is now correct and unrelated text bubbles are no longer merged together.
+- Double-tap zoom now takes priority over single-tap actions.
+- Improved popup margins for pitch accent and structured content.
+- Anki `{SelectionText}` marker now preserves line breaks properly.
+- Popup selection text not being cleared between lookups.
+
 ## [v1.6.2]
 
 ### Added
