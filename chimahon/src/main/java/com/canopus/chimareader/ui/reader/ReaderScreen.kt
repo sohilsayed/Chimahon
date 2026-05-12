@@ -43,14 +43,15 @@ fun ReaderScreen(
     onDismissPopupRequested: () -> Unit = {},
     isPopupActive: Boolean = false,
     onViewModelReady: (ReaderViewModel?) -> Unit = {},
-    additionalSettings: @Composable ColumnScope.() -> Unit = {}
+    additionalSettings: @Composable ColumnScope.() -> Unit = {},
+    settingsNamespace: String? = null,
 ) {
     val context = LocalContext.current
 
     var focusMode by remember { mutableStateOf(false) }
     var activeSheet by remember { mutableStateOf<ActiveSheet?>(null) }
     val scope = rememberCoroutineScope()
-    val settings = remember(book.lang) { com.canopus.chimareader.data.NovelReaderSettings(context, book.lang) }
+    val settings = remember(settingsNamespace) { com.canopus.chimareader.data.NovelReaderSettings(context, settingsNamespace) }
 
     // Collect swipe and tap settings
     val chapterSwipeDistance by settings.chapterSwipeDistance.collectAsState(initial = 96)

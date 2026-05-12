@@ -95,6 +95,9 @@ open class NovelReaderActivity : ComponentActivity() {
     @Composable
     protected open fun AdditionalAppearanceSettings() {}
 
+    /** Subclasses can override to pass a profile ID for per-profile settings. */
+    protected open fun getSettingsNamespace(): String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
 
@@ -134,6 +137,7 @@ open class NovelReaderActivity : ComponentActivity() {
                 isPopupActive = isPopupActive,
                 onViewModelReady = { readerViewModel = it },
                 additionalSettings = { AdditionalAppearanceSettings() },
+                settingsNamespace = getSettingsNamespace(),
             )
             PopupOverlay()
         }

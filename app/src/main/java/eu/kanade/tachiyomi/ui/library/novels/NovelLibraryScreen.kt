@@ -282,10 +282,10 @@ fun Screen.NovelLibraryScreen() {
             var editLang by remember { mutableStateOf(book.lang ?: "") }
             var selectedOverride by remember { mutableStateOf(initialOverride) }
 
-            val sourcePreferences = remember { Injekt.get<eu.kanade.domain.source.service.SourcePreferences>() }
             val enabledLanguages = remember {
-                val langs = sourcePreferences.enabledLanguages().get()
-                langs.filter { it != "all" }.sortedWith { a, b ->
+                listOf(
+                    "ja", "ko", "ar", "zh", "en", "de", "fr", "ru", "es", "it"
+                ).sortedWith { a, b ->
                     eu.kanade.tachiyomi.util.system.LocaleHelper.getDisplayName(a)
                         .compareTo(eu.kanade.tachiyomi.util.system.LocaleHelper.getDisplayName(b))
                 }

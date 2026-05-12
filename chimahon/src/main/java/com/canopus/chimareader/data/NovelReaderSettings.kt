@@ -24,7 +24,7 @@ enum class StatisticsAutostartMode {
     PAGETURN
 }
 
-class NovelReaderSettings(private val context: Context, private val language: String? = null) {
+class NovelReaderSettings(private val context: Context, private val namespace: String? = null) {
 
     companion object {
         fun default(): NovelReaderSettings {
@@ -32,20 +32,24 @@ class NovelReaderSettings(private val context: Context, private val language: St
         }
     }
 
-    private fun stringKey(name: String, languageSpecific: Boolean = false): androidx.datastore.preferences.core.Preferences.Key<String> {
-        return stringPreferencesKey(if (languageSpecific && !language.isNullOrEmpty()) "${language}_$name" else name)
+    private fun prefName(name: String): String {
+        return if (namespace.isNullOrEmpty()) name else "${namespace}_$name"
     }
 
-    private fun booleanKey(name: String, languageSpecific: Boolean = false): androidx.datastore.preferences.core.Preferences.Key<Boolean> {
-        return booleanPreferencesKey(if (languageSpecific && !language.isNullOrEmpty()) "${language}_$name" else name)
+    private fun stringKey(name: String): androidx.datastore.preferences.core.Preferences.Key<String> {
+        return stringPreferencesKey(prefName(name))
     }
 
-    private fun intKey(name: String, languageSpecific: Boolean = false): androidx.datastore.preferences.core.Preferences.Key<Int> {
-        return intPreferencesKey(if (languageSpecific && !language.isNullOrEmpty()) "${language}_$name" else name)
+    private fun booleanKey(name: String): androidx.datastore.preferences.core.Preferences.Key<Boolean> {
+        return booleanPreferencesKey(prefName(name))
     }
 
-    private fun doubleKey(name: String, languageSpecific: Boolean = false): androidx.datastore.preferences.core.Preferences.Key<Double> {
-        return doublePreferencesKey(if (languageSpecific && !language.isNullOrEmpty()) "${language}_$name" else name)
+    private fun intKey(name: String): androidx.datastore.preferences.core.Preferences.Key<Int> {
+        return intPreferencesKey(prefName(name))
+    }
+
+    private fun doubleKey(name: String): androidx.datastore.preferences.core.Preferences.Key<Double> {
+        return doublePreferencesKey(prefName(name))
     }
 
     private val dataStore = context.novelReaderDataStore
@@ -445,21 +449,21 @@ class NovelReaderSettings(private val context: Context, private val language: St
         val CUSTOM_BACKGROUND_COLOR = intKey("custom_background_color")
         val CUSTOM_TEXT_COLOR = intKey("custom_text_color")
         val CUSTOM_INFO_COLOR = intKey("custom_info_color")
-        val VERTICAL_WRITING = booleanKey("vertical_writing", languageSpecific = true)
-        val SELECTED_FONT = stringKey("selected_font", languageSpecific = true)
-        val FONT_SIZE = doubleKey("font_size", languageSpecific = true)
-        val READER_HIDE_FURIGANA = booleanKey("reader_hide_furigana", languageSpecific = true)
-        val CONTINUOUS_MODE = booleanKey("continuous_mode", languageSpecific = true)
+        val VERTICAL_WRITING = booleanKey("vertical_writing")
+        val SELECTED_FONT = stringKey("selected_font")
+        val FONT_SIZE = doubleKey("font_size")
+        val READER_HIDE_FURIGANA = booleanKey("reader_hide_furigana")
+        val CONTINUOUS_MODE = booleanKey("continuous_mode")
         val CHAPTER_SWIPE_DISTANCE = intKey("chapter_swipe_distance")
         val CHAPTER_TAP_ZONES = intKey("chapter_tap_zones")
-        val HORIZONTAL_PADDING = doubleKey("horizontal_padding", languageSpecific = true)
-        val VERTICAL_PADDING = doubleKey("vertical_padding", languageSpecific = true)
-        val AVOID_PAGE_BREAK = booleanKey("avoid_page_break", languageSpecific = true)
-        val JUSTIFY_TEXT = booleanKey("justify_text", languageSpecific = true)
-        val LAYOUT_ADVANCED = booleanKey("layout_advanced", languageSpecific = true)
-        val LINE_HEIGHT = doubleKey("line_height", languageSpecific = true)
-        val CHARACTER_SPACING = doubleKey("character_spacing", languageSpecific = true)
-        val PARAGRAPH_SPACING = doubleKey("paragraph_spacing", languageSpecific = true)
+        val HORIZONTAL_PADDING = doubleKey("horizontal_padding")
+        val VERTICAL_PADDING = doubleKey("vertical_padding")
+        val AVOID_PAGE_BREAK = booleanKey("avoid_page_break")
+        val JUSTIFY_TEXT = booleanKey("justify_text")
+        val LAYOUT_ADVANCED = booleanKey("layout_advanced")
+        val LINE_HEIGHT = doubleKey("line_height")
+        val CHARACTER_SPACING = doubleKey("character_spacing")
+        val PARAGRAPH_SPACING = doubleKey("paragraph_spacing")
         val READER_SHOW_TITLE = booleanKey("reader_show_title")
         val READER_SHOW_CHARACTERS = booleanKey("reader_show_characters")
         val READER_SHOW_PERCENTAGE = booleanKey("reader_show_percentage")

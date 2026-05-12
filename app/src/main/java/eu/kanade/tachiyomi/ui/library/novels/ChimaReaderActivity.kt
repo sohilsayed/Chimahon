@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.ui.library.novels
 
 import android.os.Bundle
+import com.canopus.chimareader.data.BookStorage
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.FrameLayout
@@ -50,7 +51,7 @@ class ChimaReaderActivity : NovelReaderActivity() {
 
     private val readerPreferences: eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences by uy.kohesive.injekt.injectLazy()
     private var popupWebView: WebView? = null
-    private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this) }
+    private val novelReaderSettings by lazy { com.canopus.chimareader.data.NovelReaderSettings(this, getSettingsNamespace()) }
 
     private var cachedActiveProfile: chimahon.anki.AnkiProfile? = null
     private var cachedTermPaths: List<String>? = null
@@ -68,24 +69,35 @@ class ChimaReaderActivity : NovelReaderActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prefs = Injekt.get<DictionaryPreferences>()
+        val path = intent.getStringExtra("extra_book_dir")
+        if (!path.isNullOrEmpty()) {
+            val root = java.io.File(path)
+            if (root.exists() && root.isDirectory) {
+                    val metadata = BookStorage.loadMetadata(root)
+                if (metadata != null) {
+                    val profile = prefs.profileResolver.resolve(
+                        novelId = metadata.id ?: "",
+                        sourceLang = metadata.lang ?: "",
+                    )
+                    cachedActiveProfile = profile
+                    cachedTermPaths = getDictionaryPaths(this, profile)
+                }
+            }
+        }
+
         super.onCreate(savedInstanceState)
         window.decorView.post {
             if (!isDestroyed) ensurePopupWebView()
         }
 
-        val prefs = Injekt.get<DictionaryPreferences>()
+        val activeProfile = cachedActiveProfile ?: getOrRefreshLookupPaths().first
+        val warmPaths = cachedTermPaths ?: getDictionaryPaths(this, activeProfile)
+        cachedActiveProfile = activeProfile
+        cachedTermPaths = warmPaths
 
         lifecycleScope.launch(Dispatchers.Default) {
-            val novelId = bookMetadata?.id ?: ""
-            val novelLang = bookMetadata?.lang ?: ""
-            val profile = prefs.profileResolver.resolve(
-                novelId = novelId,
-                sourceLang = novelLang,
-            )
-            val termPaths = getDictionaryPaths(this@ChimaReaderActivity, profile)
-            cachedActiveProfile = profile
-            cachedTermPaths = termPaths
-            Injekt.get<DictionaryRepository>().warmUp(termPaths, profile.id)
+            Injekt.get<DictionaryRepository>().warmUp(warmPaths, activeProfile.id)
         }
 
         lifecycleScope.launch {
@@ -106,11 +118,17 @@ class ChimaReaderActivity : NovelReaderActivity() {
         }
     }
 
+    override fun getSettingsNamespace(): String? {
+        val profile = cachedActiveProfile ?: getOrRefreshLookupPaths().first
+        return profile.id.takeIf { it.isNotEmpty() }
+    }
+
     @android.annotation.SuppressLint("SetJavaScriptEnabled")
     private fun ensurePopupWebView(): WebView {
         val webView = popupWebView ?: WebView(this).also {
             popupWebView = it
-            prepareDictionaryWebViewShell(this, it)
+            val profileLang = getOrRefreshLookupPaths().first.languageCode
+            prepareDictionaryWebViewShell(this, it, languageCode = profileLang)
         }
         if (!isPopupActive) {
             attachPopupWebViewForWarmup(webView)

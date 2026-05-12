@@ -2081,6 +2081,7 @@ class ReaderActivity : BaseActivity() {
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun createOcrWebView(ctx: Context): android.webkit.WebView {
-        return prepareDictionaryWebViewShell(ctx)
+        val profileLang = getOrRefreshLookupPaths().first.languageCode
+        return prepareDictionaryWebViewShell(ctx, languageCode = profileLang)
     }
 }
