@@ -338,6 +338,7 @@ data object DictionaryTab : Tab {
                             selectedDict = selectedDict,
                             styles = styles,
                             forceOpen = forceOpen,
+                            type = "novel",
                         )
                         if (ankiResult is AnkiResult.Success || ankiResult is AnkiResult.CardExists || ankiResult is AnkiResult.OpenCard) {
                             val frame = lookupStack.getOrNull(frameIndex)

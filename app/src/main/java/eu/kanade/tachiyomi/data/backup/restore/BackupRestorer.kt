@@ -112,6 +112,10 @@ class BackupRestorer(
                 restoreAmount += 1
             }
         }
+        if (options.appSettings) {
+            if (backup.backupMangaStats.isNotEmpty()) restoreAmount += 1
+            if (backup.backupAnkiStats.isNotEmpty()) restoreAmount += 1
+        }
         // Chimahon <--
 
         coroutineScope {
@@ -130,6 +134,7 @@ class BackupRestorer(
             // SY <--
             if (options.appSettings) {
                 restoreAppPreferences(backup.backupPreferences, backup.backupCategories.takeIf { options.categories })
+                restoreGlobalStats(backup.backupMangaStats, backup.backupAnkiStats)
             }
             if (options.sourceSettings) {
                 restoreSourcePreferences(backup.backupSourcePreferences)
@@ -317,6 +322,26 @@ class BackupRestorer(
                 restoreAmount,
                 isSync,
             ).show(Notifications.ID_RESTORE_PROGRESS)
+        }
+    }
+
+    private fun CoroutineScope.restoreGlobalStats(
+        mangaStats: List<com.canopus.chimareader.data.MangaStats>,
+        ankiStats: List<com.canopus.chimareader.data.AnkiStats>
+    ) = launch {
+        if (mangaStats.isNotEmpty()) {
+            ensureActive()
+            com.canopus.chimareader.data.MangaStatsStorage.merge(context, mangaStats)
+            restoreProgress += 1
+            notifier.showRestoreProgress(context.stringResource(MR.strings.label_manga), restoreProgress, restoreAmount, isSync)
+                .show(Notifications.ID_RESTORE_PROGRESS)
+        }
+        if (ankiStats.isNotEmpty()) {
+            ensureActive()
+            com.canopus.chimareader.data.AnkiStatsStorage.merge(context, ankiStats)
+            restoreProgress += 1
+            notifier.showRestoreProgress("Anki", restoreProgress, restoreAmount, isSync)
+                .show(Notifications.ID_RESTORE_PROGRESS)
         }
     }
     // Chimahon <--

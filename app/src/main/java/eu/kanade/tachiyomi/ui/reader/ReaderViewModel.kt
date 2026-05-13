@@ -48,6 +48,7 @@ import eu.kanade.tachiyomi.ui.reader.setting.ReaderOrientation
 import eu.kanade.tachiyomi.ui.reader.setting.ReaderPreferences
 import eu.kanade.tachiyomi.ui.reader.setting.ReadingMode
 import eu.kanade.tachiyomi.ui.reader.viewer.Viewer
+import eu.kanade.tachiyomi.ui.reader.viewer.fullText
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.PagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.pager.R2LPagerViewer
 import eu.kanade.tachiyomi.ui.reader.viewer.webtoon.WebtoonViewer
@@ -217,6 +218,9 @@ class ReaderViewModel @JvmOverloads constructor(
             savedState["page_index"] = value
             field = value
         }
+
+    private var lastMangaStatsTime: Long = SystemClock.elapsedRealtime()
+    private var currentMangaStatsPage: ReaderPage? = null
 
     // KMK -->
     fun handleDownloadAction(chapter: Chapter, action: ChapterDownloadAction) {
@@ -450,6 +454,7 @@ class ReaderViewModel @JvmOverloads constructor(
      * trigger deletion of the downloaded chapters.
      */
     fun onActivityFinish() {
+        trackMangaStats(null)
         deletePendingChapters()
     }
 
@@ -621,6 +626,7 @@ class ReaderViewModel @JvmOverloads constructor(
 
             updateHistory()
             restartReadTimer()
+            trackMangaStats(null)
 
             try {
                 loadChapter(loader, chapter)
@@ -743,6 +749,8 @@ class ReaderViewModel @JvmOverloads constructor(
         viewModelScope.launchNonCancellable {
             updateChapterProgress(selectedChapter, page/* SY --> */, hasExtraPage/* SY <-- */)
         }
+
+        trackMangaStats(page)
 
         if (selectedChapter != getCurrentChapter()) {
             logcat { "Setting ${selectedChapter.chapter.url} as active" }
@@ -2249,6 +2257,27 @@ class ReaderViewModel @JvmOverloads constructor(
             // SY <--
         ) : Event
         data class CopyImage(val uri: Uri) : Event
+    }
+
+    private fun trackMangaStats(newPage: ReaderPage?) {
+        val now = SystemClock.elapsedRealtime()
+        val prevPage = currentMangaStatsPage
+        val timeSpent = now - lastMangaStatsTime
+
+        if (prevPage != null && !incognitoMode && timeSpent > 500) {
+            viewModelScope.launchIO {
+                val blocks = getOcrBlocks(prevPage)
+                if (blocks.isNotEmpty()) {
+                    val chars = blocks.sumOf { block -> block.fullText.length }
+                    if (chars > 0) {
+                        com.canopus.chimareader.data.MangaStatsStorage.addStats(application, chars, timeSpent)
+                    }
+                }
+            }
+        }
+
+        currentMangaStatsPage = newPage
+        lastMangaStatsTime = now
     }
 }
 
