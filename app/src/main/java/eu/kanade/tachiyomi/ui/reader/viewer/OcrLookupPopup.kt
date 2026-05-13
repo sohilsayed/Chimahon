@@ -164,6 +164,7 @@ fun OcrLookupPopup(
     val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
     val customCss by dictionaryPreferences.customCss().collectAsState()
     val wordAudioEnabled by dictionaryPreferences.wordAudioEnabled().collectAsState()
+    val groupPitches by dictionaryPreferences.groupPitches().collectAsState()
 
     val systemIsDark = isSystemInDarkTheme()
     val amoled by dictionaryPreferences.themeDarkAmoled().collectAsState()
@@ -659,6 +660,7 @@ fun OcrLookupPopup(
                     recursiveNavMode = recursiveNavMode,
                     customCss = customCss,
                     wordAudioEnabled = wordAudioEnabled,
+                    groupPitches = groupPitches,
                     webViewProvider = { webView },
                     onAnkiLookup = onAnkiLookup,
                     onRecursiveLookup = onRecursiveLookup,

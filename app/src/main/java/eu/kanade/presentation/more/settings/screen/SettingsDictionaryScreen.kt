@@ -540,6 +540,11 @@ object SettingsDictionaryScreen : SearchableSettings {
                     subtitle = stringResource(MR.strings.pref_dict_show_frequency_harmonic_summary),
                 ),
                 Preference.PreferenceItem.SwitchPreference(
+                    preference = dictionaryPreferences.groupPitches(),
+                    title = stringResource(KMR.strings.pref_dict_group_pitches),
+                    subtitle = stringResource(KMR.strings.pref_dict_group_pitches_summary),
+                ),
+                Preference.PreferenceItem.SwitchPreference(
                     preference = groupTermsPref,
                     title = stringResource(MR.strings.pref_dict_group_terms),
                     subtitle = stringResource(MR.strings.pref_dict_group_terms_summary),

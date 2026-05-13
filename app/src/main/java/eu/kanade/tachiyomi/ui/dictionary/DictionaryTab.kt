@@ -200,6 +200,7 @@ data object DictionaryTab : Tab {
         val customCss by dictionaryPreferences.customCss().collectAsState()
         val wordAudioEnabled by dictionaryPreferences.wordAudioEnabled().collectAsState()
         val autoKanaConversion by dictionaryPreferences.autoKanaConversion().collectAsState()
+        val groupPitches by dictionaryPreferences.groupPitches().collectAsState()
         // ── Lookup history stack ──────────────────────────────────────────────
         val lookupStack = remember { mutableStateListOf<TabLookupFrame>() }
         var activeTabIndex by remember { mutableIntStateOf(0) }
@@ -567,6 +568,7 @@ data object DictionaryTab : Tab {
                     onBack = {
                         if (activeTabIndex > 0) activeTabIndex--
                     },
+                    groupPitches = groupPitches,
                     forceDefaultTheme = true,
                     modifier = Modifier
                         .fillMaxWidth()

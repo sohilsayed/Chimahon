@@ -26,6 +26,7 @@ class DictionaryPreferences(
     fun showPitchDiagram() = preferenceStore.getBoolean("pref_dict_show_pitch_diagram", true)
     fun showPitchNumber() = preferenceStore.getBoolean("pref_dict_show_pitch_number", true)
     fun showPitchText() = preferenceStore.getBoolean("pref_dict_show_pitch_text", true)
+    fun groupPitches() = preferenceStore.getBoolean("pref_dict_group_pitches", false)
     fun showNavigationButtons() = preferenceStore.getBoolean("pref_dict_show_navigation_buttons", true)
 
     fun autoKanaConversion() = preferenceStore.getBoolean("pref_dict_auto_kana_conversion", true)

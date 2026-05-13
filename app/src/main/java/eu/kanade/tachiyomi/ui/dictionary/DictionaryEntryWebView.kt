@@ -76,6 +76,7 @@ private data class DictionaryRenderSignature(
     val wordAudioEnabled: Boolean,
     val wordAudioAutoplay: Boolean,
     val showNavigationButtons: Boolean,
+    val groupPitches: Boolean,
 )
 
 @SuppressLint("SetJavaScriptEnabled")
@@ -98,6 +99,7 @@ fun DictionaryEntryWebView(
     recursiveNavMode: String = "tabs",
     wordAudioEnabled: Boolean = true,
     customCss: String = "",
+    groupPitches: Boolean = false,
     modifier: Modifier = Modifier,
     webViewProvider: ((Context) -> WebView)? = null,
     onAnkiLookup: ((Int, Int?, String?, String?, Boolean) -> Unit)? = null,
@@ -149,6 +151,7 @@ fun DictionaryEntryWebView(
         wordAudioEnabled,
         wordAudioAutoplay,
         showNavigationButtons,
+        groupPitches,
     ) {
         DictionaryRenderSignature(
             results = results,
@@ -166,6 +169,7 @@ fun DictionaryEntryWebView(
             wordAudioEnabled = wordAudioEnabled,
             wordAudioAutoplay = wordAudioAutoplay,
             showNavigationButtons = showNavigationButtons,
+            groupPitches = groupPitches,
         )
     }
 
@@ -177,6 +181,7 @@ fun DictionaryEntryWebView(
             wordAudioAutoplay, activeProfile, emptySet(), tabs, recursiveNavMode,
             wordAudioEnabled = wordAudioEnabled,
             showNavigationButtons = showNavigationButtons,
+            groupPitches = groupPitches,
         )
         Log.i(
             "DictionaryRender",
@@ -711,6 +716,7 @@ private fun buildRenderPayload(
     recursiveNavMode: String = "tabs",
     wordAudioEnabled: Boolean = true,
     showNavigationButtons: Boolean = true,
+    groupPitches: Boolean = false,
 ): JsonObject = buildJsonObject {
     // Dictionary Priority Order (Titles)
     val orderedTitles = activeProfile.dictionaryOrder
@@ -831,15 +837,60 @@ private fun buildRenderPayload(
 
                     // Pitches
                     putJsonArray("pitches") {
-                        for (group in result.term.pitches) {
-                            add(buildJsonObject {
-                                put("dictName", group.dictName)
-                                putJsonArray("pitchPositions") {
-                                    for (pos in group.pitchPositions) {
-                                        add(JsonPrimitive(pos))
+                        val allPitches = result.term.pitches
+                        val priorityList = activeProfile.dictionaryOrder
+
+                        if (groupPitches) {
+                            // Full Union approach: merge all pitches and all dictionaries into a single block
+                            // Order is determined by dictionary priority
+                            val orderedPitches = LinkedHashSet<Int>()
+                            
+                            // 1. Process dictionaries in priority order to establish pitch sequence
+                            for (dictId in priorityList) {
+                                allPitches.filter { it.dictName == dictId }
+                                    .forEach { group -> 
+                                        orderedPitches.addAll(group.pitchPositions.toList())
                                     }
+                            }
+                            
+                            // 2. Catch remaining pitches from dictionaries not in priority list
+                            for (group in allPitches) {
+                                if (group.dictName !in priorityList) {
+                                    orderedPitches.addAll(group.pitchPositions.toList())
                                 }
-                            })
+                            }
+
+                            val allDictIds = allPitches.map { it.dictName }.distinct()
+
+                            if (orderedPitches.isNotEmpty()) {
+                                // Sort dictionary IDs by priority and convert to Titles
+                                val sortedTitles = allDictIds.sortedBy { 
+                                    val idx = priorityList.indexOf(it)
+                                    if (idx == -1) Int.MAX_VALUE else idx
+                                }.map { getDictionaryTitle(context, it) }
+
+                                add(buildJsonObject {
+                                    put("dictName", sortedTitles.joinToString(", "))
+                                    putJsonArray("pitchPositions") {
+                                        for (pos in orderedPitches) {
+                                            add(JsonPrimitive(pos))
+                                        }
+                                    }
+                                })
+                            }
+                        } else {
+                            // Classic Hoshi-style display: one block per dictionary
+                            for (group in allPitches) {
+                                val title = getDictionaryTitle(context, group.dictName)
+                                add(buildJsonObject {
+                                    put("dictName", title)
+                                    putJsonArray("pitchPositions") {
+                                        for (pos in group.pitchPositions.distinct()) {
+                                            add(JsonPrimitive(pos))
+                                        }
+                                    }
+                                })
+                            }
                         }
                     }
                 })
