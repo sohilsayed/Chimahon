@@ -731,12 +731,12 @@
     }
 
     if (activeIndex >= 0) {
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         const activeBtn = el.querySelector(`[data-tab-index="${activeIndex}"]`);
         if (activeBtn) {
           activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
-      }, 100);
+      });
     }
   }
 
@@ -2424,10 +2424,10 @@
           
           if (savedScroll > 0) {
             _isJumping = true;
-            setTimeout(() => {
+            requestAnimationFrame(() => {
               window.scrollTo(0, savedScroll);
               setTimeout(() => { _isJumping = false; }, 200);
-            }, 100);
+            });
           } else {
             window.scrollTo(0, 0);
           }

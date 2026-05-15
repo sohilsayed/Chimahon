@@ -311,8 +311,9 @@ class ChimaReaderActivity : NovelReaderActivity() {
         lookupDeferred = lifecycleScope.async(Dispatchers.Default) {
             Injekt.get<DictionaryRepository>().lookup(word.trim(), termPaths, profile.languageCode)
         }
-        // Set placeholder state; popup will be shown after matched word position is known
-        lookupState = LookupState(word, sentence, 0f, 0f, 0f, 0f, isVerticalWriting, profile)
+        // Set preliminary state with tap coordinates; refined to exact
+        // character position when rects arrive from JS (match path).
+        lookupState = LookupState(word, sentence, x, y, w, h, isVerticalWriting, profile)
 
         lifecycleScope.launch(Dispatchers.Default) {
             val result = try { lookupDeferred?.await() } catch (_: Exception) { null }

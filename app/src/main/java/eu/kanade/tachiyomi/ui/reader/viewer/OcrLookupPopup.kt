@@ -584,12 +584,12 @@ fun OcrLookupPopup(
             return@LaunchedEffect
         }
         // Reset the stack and load the initial term.
-        // Don't reset contentReady here — the warm shell keeps the popup
-        // visible between lookups.  The renderer will call contentReady
-        // again once new entries are painted.
+        // Don't reset contentReady or hasRenderedContent here — the warm
+        // shell keeps the popup visible between lookups without alpha
+        // flicker.  The renderer will call contentReady again once new
+        // entries are painted.
         lookupStackState = LookupStackState()
-        isLoading = initialLookupDeferred != null && !initialLookupDeferred.isCompleted
-        hasRenderedContent = false
+        isLoading = false
         pushLookup(lookupString, deferredResult = initialLookupDeferred)
     }
 
@@ -652,12 +652,11 @@ fun OcrLookupPopup(
             shadowElevation = 6.dp,
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
-                if (currentFrame != null) {
-                    DictionaryEntryWebView(
+                DictionaryEntryWebView(
                     results = results,
                     styles = styles,
                     mediaDataUris = mediaDataUris,
-                    placeholder = if (isLoading) "" else "No results found",
+                    placeholder = if (isLoading || currentFrame == null) "" else "No results found",
                     headerText = lookupString.take(20) + if (lookupString.length > 20) "…" else "",
                     fontSize = popupFontSizePref,
                     showFrequencyHarmonic = showFreqHarmonic,
@@ -689,7 +688,6 @@ fun OcrLookupPopup(
                         },
                         modifier = Modifier.fillMaxSize(),
                     )
-                }
 
                 if (errorMessage != null) {
                     Text(
