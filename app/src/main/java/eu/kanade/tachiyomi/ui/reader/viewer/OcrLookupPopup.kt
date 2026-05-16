@@ -175,19 +175,24 @@ fun OcrLookupPopup(
     val groupPitches by dictionaryPreferences.groupPitches().collectAsState()
 
     val systemIsDark = isSystemInDarkTheme()
-    val amoled by dictionaryPreferences.themeDarkAmoled().collectAsState()
+    val themeMode by dictionaryPreferences.themeMode().collectAsState()
     val customColor by dictionaryPreferences.customColor().collectAsState()
 
     val uiPreferences = remember { Injekt.get<UiPreferences>() }
     val seedColor = if (customColor == 0) uiPreferences.colorTheme().get() else customColor
-    val isDark = remember(seedColor, customColor, systemIsDark) {
-        if (customColor != 0) Color(seedColor).luminance() < 0.5f else systemIsDark
+    val isAmoled = themeMode == "pure_black"
+    val isDark = remember(seedColor, customColor, systemIsDark, themeMode) {
+        when (themeMode) {
+            "dark", "pure_black" -> true
+            "light" -> false
+            else -> if (customColor != 0) Color(seedColor).luminance() < 0.5f else systemIsDark
+        }
     }
-    val colorScheme = remember(isDark, amoled, seedColor) {
-        getDictionaryColorScheme(isDark, amoled, seedColor)
+    val colorScheme = remember(isDark, isAmoled, seedColor) {
+        getDictionaryColorScheme(isDark, isAmoled, seedColor)
     }
-    val BgColor = remember(isDark, amoled, seedColor, colorScheme) {
-        if (amoled && isDark) Color.Black else colorScheme.surface
+    val BgColor = remember(isDark, isAmoled, seedColor, colorScheme) {
+        if (isAmoled && isDark) Color.Black else colorScheme.surface
     }
 
     /** Perform a dictionary lookup and push a new frame onto the stack. */

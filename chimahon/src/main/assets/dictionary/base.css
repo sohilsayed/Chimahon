@@ -226,7 +226,8 @@ body {
 
 .dictionary-header:hover {
   color: var(--fg);
-  background-color: var(--hover-bg);
+  border-left-color: var(--border);
+  background-color: rgba(0, 0, 0, 0.04);
 }
 
 .dictionary-header.selected {

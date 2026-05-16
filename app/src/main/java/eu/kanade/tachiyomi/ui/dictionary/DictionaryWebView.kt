@@ -183,7 +183,6 @@ internal class DictionaryWebViewState(
                 "document.documentElement.style.fontSize = v;" +
                 "document.body.style.fontSize = v;" +
                 "document.documentElement.style.setProperty('--font-size-no-units', '$fontSize');" +
-                "document.documentElement.dataset.theme = '${if (context.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES) "dark" else "light"}';" +
                 "})('$fontSize');",
             null,
         )

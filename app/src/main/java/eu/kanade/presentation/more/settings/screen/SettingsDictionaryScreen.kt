@@ -339,8 +339,8 @@ object SettingsDictionaryScreen : SearchableSettings {
         val ocrBoxScalePref = dictionaryPreferences.ocrBoxScale()
         val ocrBoxScale by ocrBoxScalePref.collectAsState()
 
-        val amoledPref = dictionaryPreferences.themeDarkAmoled()
-        val amoled by amoledPref.collectAsState()
+        val themeModePref = dictionaryPreferences.themeMode()
+        val themeMode by themeModePref.collectAsState()
 
         val navigator = LocalNavigator.currentOrThrow
 
@@ -525,10 +525,40 @@ object SettingsDictionaryScreen : SearchableSettings {
                         navigator.push(AppCustomThemeColorPickerScreen(isDictionary = true))
                     },
                 ),
-                Preference.PreferenceItem.SwitchPreference(
-                    preference = amoledPref,
-                    title = stringResource(MR.strings.pref_dark_theme_pure_black),
-                    enabled = isSystemInDarkTheme(),
+                Preference.PreferenceItem.CustomPreference(
+                    title = "Dictionary theme",
+                    content = {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                        ) {
+                            Text(
+                                text = "Dictionary theme",
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                val chips = listOf(
+                                    "system" to stringResource(MR.strings.theme_system),
+                                    "light" to stringResource(MR.strings.theme_light),
+                                    "dark" to stringResource(MR.strings.theme_dark),
+                                    "pure_black" to stringResource(MR.strings.pref_dict_theme_pure_black),
+                                )
+                                chips.forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = themeMode == value,
+                                        onClick = { themeModePref.set(value) },
+                                        label = { Text(label) },
+                                    )
+                                }
+                            }
+                        }
+                    },
                 ),
                 Preference.PreferenceItem.SwitchPreference(
                     preference = dictionaryPreferences.eInkMode(),

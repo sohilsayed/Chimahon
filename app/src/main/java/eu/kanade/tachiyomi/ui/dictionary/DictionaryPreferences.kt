@@ -33,7 +33,18 @@ class DictionaryPreferences(
 
     fun recursiveLookupMode() = preferenceStore.getString("pref_dict_recursive_lookup_mode", "tabs")
 
-    fun themeDarkAmoled() = preferenceStore.getBoolean("pref_dictionary_theme_dark_amoled", false)
+    fun themeMode(): tachiyomi.core.common.preference.Preference<String> {
+        // One-time migration from old boolean pref
+        val oldPref = preferenceStore.getBoolean("pref_dictionary_theme_dark_amoled", false)
+        if (oldPref.isSet()) {
+            val oldValue = oldPref.get()
+            oldPref.delete()
+            val newPref = preferenceStore.getString("pref_dictionary_theme_mode", "system")
+            newPref.set(if (oldValue) "pure_black" else "system")
+            return newPref
+        }
+        return preferenceStore.getString("pref_dictionary_theme_mode", "system")
+    }
     fun customColor() = preferenceStore.getInt("pref_dictionary_custom_color", 0)
 
     fun eInkMode() = preferenceStore.getBoolean("pref_dictionary_eink_mode", false)

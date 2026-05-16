@@ -64,7 +64,7 @@ fun DictionaryEntryWebView(
 ) {
     val context = LocalContext.current
     val dictionaryPreferences = remember { Injekt.get<DictionaryPreferences>() }
-    val amoled by dictionaryPreferences.themeDarkAmoled().collectAsState()
+    val themeMode by dictionaryPreferences.themeMode().collectAsState()
     val customColor by dictionaryPreferences.customColor().collectAsState()
 
     val prefs = remember { Injekt.get<DictionaryPreferences>() }
@@ -73,14 +73,19 @@ fun DictionaryEntryWebView(
     val seedColor = if (customColor == 0 || forceDefaultTheme) uiPreferences.colorTheme().get() else customColor
 
     val systemIsDark = isSystemInDarkTheme()
-    val isDark = remember(seedColor, customColor, systemIsDark, forceDefaultTheme) {
-        if (customColor != 0 && !forceDefaultTheme) Color(seedColor).luminance() < 0.5f else systemIsDark
+    val isAmoled = themeMode == "pure_black"
+    val isDark = remember(seedColor, customColor, systemIsDark, forceDefaultTheme, themeMode) {
+        when (themeMode) {
+            "dark", "pure_black" -> true
+            "light" -> false
+            else -> if (customColor != 0 && !forceDefaultTheme) Color(seedColor).luminance() < 0.5f else systemIsDark
+        }
     }
-    val colorScheme = remember(isDark, amoled, seedColor) {
-        getDictionaryColorScheme(isDark, amoled, seedColor)
+    val colorScheme = remember(isDark, isAmoled, seedColor) {
+        getDictionaryColorScheme(isDark, isAmoled, seedColor)
     }
-    val BgColor = remember(isDark, amoled, seedColor, colorScheme) {
-        if (amoled && isDark) Color.Black else colorScheme.surface
+    val BgColor = remember(isDark, isAmoled, seedColor, colorScheme) {
+        if (isAmoled && isDark) Color.Black else colorScheme.surface
     }
     val wordAudioAutoplay by prefs.wordAudioAutoplay().collectAsState()
     val effectiveWordAudioAutoplay = wordAudioAutoplayOverride ?: wordAudioAutoplay
@@ -130,10 +135,10 @@ fun DictionaryEntryWebView(
         resultsJsonPair = resultsJsonArray to renderSignature
     }
 
-    val bootstrapHtml = remember(context, isDark, amoled, seedColor, colorScheme, fontFamily, eInkMode, activeProfile.languageCode) {
+    val bootstrapHtml = remember(context, isDark, isAmoled, seedColor, colorScheme, fontFamily, eInkMode, activeProfile.languageCode) {
         getDictionaryBootstrapHtml(
             context = context, colorScheme = colorScheme, isDark = isDark,
-            isAmoled = amoled, seedColor = seedColor, fontFamily = fontFamily,
+            isAmoled = isAmoled, seedColor = seedColor, fontFamily = fontFamily,
             eInkMode = eInkMode, languageCode = activeProfile.languageCode,
         )
     }
