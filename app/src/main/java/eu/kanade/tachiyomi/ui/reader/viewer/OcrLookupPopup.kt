@@ -135,7 +135,10 @@ fun OcrLookupPopup(
     val mediaDataUris = currentFrame?.mediaDataUris ?: emptyMap()
     val existingExpressions = currentFrame?.existingExpressions ?: emptySet()
     var contentReady by remember { mutableStateOf(false) }
-    var hasRenderedContent by remember { mutableStateOf(false) }
+    // Tracks the lookupGeneration value at the time content was last painted.
+    // Used to distinguish a fresh lookup (hide stale content) from a same-lookup
+    // invalidation like an Anki-status patch (keep content visible).
+    var lastRenderedLookupGeneration by remember { mutableIntStateOf(-1) }
     var lookupGeneration by remember { mutableIntStateOf(0) }
 
 
@@ -167,6 +170,7 @@ fun OcrLookupPopup(
     val showPitchText by dictionaryPreferences.showPitchText().collectAsState()
     val customCss by dictionaryPreferences.customCss().collectAsState()
     val wordAudioEnabled by dictionaryPreferences.wordAudioEnabled().collectAsState()
+    val wordAudioAutoplay by dictionaryPreferences.wordAudioAutoplay().collectAsState()
     val groupPitches by dictionaryPreferences.groupPitches().collectAsState()
 
     val systemIsDark = isSystemInDarkTheme()
@@ -201,7 +205,7 @@ fun OcrLookupPopup(
 
         val finalQuery = if (isRecursive) cleanQuery else query
         val generation = ++lookupGeneration
-        val shouldShowLoading = !isRecursive && !hasRenderedContent
+        val shouldShowLoading = !isRecursive && lastRenderedLookupGeneration < 0
 
         fun handleResult(result: chimahon.DictionaryRepository.LookupResult2, phaseStart: Long) {
             if (generation != lookupGeneration) return
@@ -586,14 +590,14 @@ fun OcrLookupPopup(
             lookupStackState = LookupStackState()
             isLoading = false
             contentReady = false
-            hasRenderedContent = false
+            lastRenderedLookupGeneration = -1
             return@LaunchedEffect
         }
         // Reset the stack and load the initial term.
-        // Don't reset contentReady or hasRenderedContent here — the warm
-        // shell keeps the popup visible between lookups without alpha
-        // flicker.  The renderer will call contentReady again once new
-        // entries are painted.
+        // contentReady is intentionally NOT reset here — the warm shell keeps
+        // the popup visible between lookups so the WebView never goes blank.
+        // The renderer's onContentInvalidated callback will hide stale content
+        // when a genuinely new lookup generation begins (see onContentReadyChange).
         lookupStackState = LookupStackState()
         isLoading = false
         pushLookup(lookupString, deferredResult = initialLookupDeferred)
@@ -676,20 +680,29 @@ fun OcrLookupPopup(
                     recursiveNavMode = recursiveNavMode,
                     customCss = customCss,
                     wordAudioEnabled = wordAudioEnabled,
+                    // Suppress autoplay when the popup is hidden (warm shell still in
+                    // composition). Without this the WebView fires audio on a new lookup
+                    // result even while the popup is invisible to the user.
+                    wordAudioAutoplayOverride = if (visible) wordAudioAutoplay else false,
                     groupPitches = groupPitches,
                     webViewProvider = { webView },
                     onAnkiLookup = onAnkiLookup,
                     onRecursiveLookup = onRecursiveLookup,
                     onTabSelect = onTabSelect,
                     onBack = onBack,
-                        hideOnContentInvalidated = !hasRenderedContent,
+                        hideOnContentInvalidated = true,
                         isLoading = isLoading,
                         onContentReadyChange = { ready ->
                             if (ready) {
                                 contentReady = true
-                                hasRenderedContent = true
-                            } else if (!hasRenderedContent) {
-                                contentReady = false
+                                lastRenderedLookupGeneration = lookupGeneration
+                            } else {
+                                // Hide stale content only when a new top-level lookup
+                                // has started. Same-generation invalidations (e.g. Anki
+                                // status patches) keep the current content visible.
+                                if (lookupGeneration != lastRenderedLookupGeneration) {
+                                    contentReady = false
+                                }
                             }
                         },
                         modifier = Modifier.fillMaxSize(),

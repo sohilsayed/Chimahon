@@ -105,6 +105,10 @@ fun DictionaryEntryWebView(
     showPitchText: Boolean = true,
     recursiveNavMode: String = "tabs",
     wordAudioEnabled: Boolean = true,
+    // When non-null, overrides the wordAudioAutoplay preference. Pass false to
+    // suppress autoplay (e.g. when the popup is hidden but the warm shell is
+    // still in composition and receives a new lookup result).
+    wordAudioAutoplayOverride: Boolean? = null,
     customCss: String = "",
     groupPitches: Boolean = false,
     modifier: Modifier = Modifier,
@@ -139,6 +143,7 @@ fun DictionaryEntryWebView(
         if (amoled && isDark) Color.Black else colorScheme.surface
     }
     val wordAudioAutoplay by prefs.wordAudioAutoplay().collectAsState()
+    val effectiveWordAudioAutoplay = wordAudioAutoplayOverride ?: wordAudioAutoplay
     val showNavigationButtons by prefs.showNavigationButtons().collectAsState()
     val eInkMode by prefs.eInkMode().collectAsState()
 
@@ -156,7 +161,7 @@ fun DictionaryEntryWebView(
         tabs,
         recursiveNavMode,
         wordAudioEnabled,
-        wordAudioAutoplay,
+        effectiveWordAudioAutoplay,
         showNavigationButtons,
         groupPitches,
     ) {
@@ -174,7 +179,7 @@ fun DictionaryEntryWebView(
             tabs = tabs,
             recursiveNavMode = recursiveNavMode,
             wordAudioEnabled = wordAudioEnabled,
-            wordAudioAutoplay = wordAudioAutoplay,
+            wordAudioAutoplay = effectiveWordAudioAutoplay,
             showNavigationButtons = showNavigationButtons,
             groupPitches = groupPitches,
         )
@@ -190,7 +195,7 @@ fun DictionaryEntryWebView(
             buildRenderPayload(
                 context, results, styles, emptyMap(), placeholder, isDark,
                 showFrequencyHarmonic, groupTerms, showPitchDiagram, showPitchNumber, showPitchText,
-                wordAudioAutoplay, activeProfile, emptySet(), tabs, recursiveNavMode,
+                effectiveWordAudioAutoplay, activeProfile, emptySet(), tabs, recursiveNavMode,
                 wordAudioEnabled = wordAudioEnabled,
                 showNavigationButtons = showNavigationButtons,
                 groupPitches = groupPitches,
