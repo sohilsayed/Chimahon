@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.DragHandle
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.OutlinedButton
@@ -77,6 +78,7 @@ import chimahon.anki.AnkiDroidBridge
 import chimahon.anki.AnkiProfile
 import chimahon.anki.Marker
 import eu.kanade.presentation.more.settings.Preference
+import eu.kanade.tachiyomi.data.dictionary.DictionaryUpdateJob
 import eu.kanade.tachiyomi.ui.dictionary.DictionaryPreferences
 import eu.kanade.tachiyomi.util.system.toast
 import kotlinx.collections.immutable.persistentListOf
@@ -1190,12 +1192,48 @@ object SettingsDictionaryScreen : SearchableSettings {
                                                                 collapseMenuExpanded = false
                                                             },
                                                         )
-                                                    }
-                                                }
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            val autoUpdateEnabled by dictionaryPreferences.autoUpdateEnabled().collectAsState()
+                                            IconButton(
+                                                onClick = {
+                                                    val newVal = !autoUpdateEnabled
+                                                    dictionaryPreferences.autoUpdateEnabled().set(newVal)
+                                                    DictionaryUpdateJob.setupTask(context, newVal)
+                                                },
+                                                modifier = Modifier.size(28.dp),
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Sync,
+                                                    contentDescription = if (autoUpdateEnabled) "Disable auto-update" else "Enable auto-update",
+                                                    tint = if (autoUpdateEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(18.dp),
+                                                )
+                                            }
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = "Auto-update",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                            Spacer(Modifier.weight(1f))
+                                            if (autoUpdateEnabled) {
+                                                Text(
+                                                    text = "Daily",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                )
                                             }
                                         }
                                     }
                                 }
+                            }
 
                                 @OptIn(ExperimentalFoundationApi::class)
                                 itemsIndexed(
