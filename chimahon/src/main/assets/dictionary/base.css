@@ -696,6 +696,7 @@ html[data-chima-eink-mode="true"] .tag-body {
 html[data-chima-eink-mode="true"] .dictionary-header {
   border-radius: 0 !important;
   transition: none !important;
+  will-change: background-color, color;
 }
 
 html[data-chima-eink-mode="true"] .dictionary-header.selected {

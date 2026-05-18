@@ -1620,6 +1620,7 @@
 
       const dictHeader = document.createElement('div');
       dictHeader.className = 'dictionary-header';
+      dictHeader.dataset.dictName = dictName;
       
       const arrow = document.createElement('span');
       arrow.className = 'dict-arrow';
@@ -1649,12 +1650,16 @@
           const entryArticle = dictSection.closest('article');
           const entryIdx = entryArticle ? entryArticle.dataset.index : null;
           if (entryIdx == null) return;
-          // Deselect all dict headers in this entry
-          entryArticle.querySelectorAll('.dictionary-header').forEach(h => h.classList.remove('selected'));
-          const current = _selectedDictionaries[entryIdx];
-          if (current === dictName) {
+          const prevDictName = _selectedDictionaries[entryIdx];
+          if (prevDictName === dictName) {
             delete _selectedDictionaries[entryIdx];
+            dictHeader.classList.remove('selected');
           } else {
+            if (prevDictName) {
+              delete _selectedDictionaries[entryIdx];
+              const prevHeader = entryArticle.querySelector(`[data-dict-name="${prevDictName}"]`);
+              if (prevHeader) prevHeader.classList.remove('selected');
+            }
             _selectedDictionaries[entryIdx] = dictName;
             dictHeader.classList.add('selected');
           }
