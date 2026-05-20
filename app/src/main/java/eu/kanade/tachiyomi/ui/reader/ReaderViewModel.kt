@@ -89,7 +89,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.math.min
 import logcat.LogPriority
-import logcat.logcat
+
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import tachiyomi.core.common.preference.toggle
 import tachiyomi.core.common.storage.UniFileTempFileManager
@@ -765,7 +765,7 @@ class ReaderViewModel @JvmOverloads constructor(
         if (inDownloadRange) {
             downloadNextChapters()
         }
-        
+
         // Chimahon: Pre-fetch OCR for next pages
         if (isOcrEnabled()) {
             prefetchOcrBlocks(page)
@@ -2096,15 +2096,14 @@ class ReaderViewModel @JvmOverloads constructor(
                 return emptyList()
             }
 
-            val lensClient = Injekt.get<chimahon.ocr.LensClient>()
-            val ocrResult = retryWithBackoff(times = 3) {
-                lensClient.getDebugOcrData(
+            val ocrResults = retryWithBackoff(times = 3) {
+                eu.kanade.tachiyomi.data.ocr.recognizePage(
                     bytes = imageBytes,
                     language = ocrLang,
                 )
             }
 
-            val blocks = ocrResult.mergedResults.mapNotNull { result ->
+            val blocks = ocrResults.mapNotNull { result ->
                 val bbox = result.tightBoundingBox
                 val xmin = bbox.x.toFloat().coerceIn(0f, 1f)
                 val ymin = bbox.y.toFloat().coerceIn(0f, 1f)

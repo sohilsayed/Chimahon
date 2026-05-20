@@ -4,6 +4,7 @@ import android.content.Context
 import chimahon.ocr.LensClient
 import chimahon.ocr.OcrCacheManager
 import chimahon.ocr.OcrLanguage
+import chimahon.ocr.OcrResult
 import com.hippo.unifile.UniFile
 import eu.kanade.tachiyomi.data.download.DownloadManager
 import eu.kanade.tachiyomi.data.download.DownloadProvider
@@ -37,6 +38,8 @@ import chimahon.ocr.OcrTextBlock as ChimahonOcrTextBlock
 
 class OcrManager(
     private val context: Context,
+    private val localOcrBridge: LocalOcrBridge? = null,
+    private val modelDownloader: ModelDownloader? = null,
     private val mangaRepository: MangaRepository = Injekt.get(),
     private val chapterRepository: ChapterRepository = Injekt.get(),
     private val sourceManager: SourceManager = Injekt.get(),
@@ -457,12 +460,9 @@ class OcrManager(
                             ?: OcrLanguage.JAPANESE
 
                         val result = retryWithBackoff(times = 3) {
-                            lensClient.getDebugOcrData(
-                                bytes = bytes,
-                                language = ocrLang,
-                            )
+                            recognizePage(bytes = bytes, language = ocrLang)
                         }
-                        result.mergedResults.mapNotNull { r ->
+                        result.mapNotNull { r ->
                             val bbox = r.tightBoundingBox
                             val xmin = bbox.x.toFloat().coerceIn(0f, 1f)
                             val ymin = bbox.y.toFloat().coerceIn(0f, 1f)

@@ -46,6 +46,7 @@ object Notifications {
     const val ID_DOWNLOAD_CHAPTER_PAUSED = -203
     // KMK <--
     const val ID_OCR_PROGRESS = -204
+    const val CHANNEL_OCR_MODEL_DOWNLOAD = "ocr_model_download_channel"
     const val CHANNEL_DOWNLOADER_ERROR = "downloader_error_channel"
     const val ID_DOWNLOAD_CHAPTER_ERROR = -202
 
@@ -221,6 +222,10 @@ object Notifications {
                 // SY <--
                 buildNotificationChannel(CHANNEL_DICTIONARY_UPDATE, IMPORTANCE_LOW) {
                     setName(context.stringResource(MR.strings.channel_dictionary_update))
+                    setShowBadge(false)
+                },
+                buildNotificationChannel(CHANNEL_OCR_MODEL_DOWNLOAD, IMPORTANCE_LOW) {
+                    setName("OCR model download")
                     setShowBadge(false)
                 },
             ),

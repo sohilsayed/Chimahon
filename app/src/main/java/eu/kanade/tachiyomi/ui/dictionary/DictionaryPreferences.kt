@@ -20,6 +20,9 @@ class DictionaryPreferences(
 
     fun ocrBoxScale() = preferenceStore.getFloat("pref_ocr_box_scale", 1.0f)
 
+    /** "cloud" (default) or "local" */
+    fun ocrEngine() = preferenceStore.getString("pref_ocr_engine", "cloud")
+
     fun showFrequencyHarmonic() = preferenceStore.getBoolean("pref_dict_show_frequency_harmonic", false)
 
     fun groupTerms() = preferenceStore.getBoolean("pref_dict_group_terms", true)

@@ -108,6 +108,7 @@ import tachiyomi.core.common.i18n.stringResource
 import tachiyomi.i18n.MR
 import tachiyomi.presentation.core.i18n.stringResource
 import tachiyomi.presentation.core.util.collectAsState
+import eu.kanade.tachiyomi.data.ocr.ModelDownloader
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import eu.kanade.presentation.more.settings.widget.TextPreferenceWidget
@@ -524,6 +525,24 @@ object SettingsDictionaryScreen : SearchableSettings {
                     steps = 14,
                     onValueChanged = { newValue ->
                         ocrBoxScalePref.set(newValue / 100f)
+                    },
+                ),
+                Preference.PreferenceItem.ListPreference(
+                    preference = dictionaryPreferences.ocrEngine(),
+                    entries = persistentListOf(
+                        "cloud" to "Cloud (Google Lens)",
+                        *if (eu.kanade.tachiyomi.BuildConfig.HAS_LOCAL_OCR) {
+                            arrayOf("local" to "Local (On-Device)")
+                        } else {
+                            emptyArray()
+                        },
+                    ).associate { it.first to it.second }.toPersistentMap(),
+                    title = "OCR Engine",
+                    onValueChanged = { value ->
+                        if (value == "local") {
+                            Injekt.get<ModelDownloader>().triggerDownload()
+                        }
+                        true
                     },
                 ),
                 Preference.PreferenceItem.TextPreference(
